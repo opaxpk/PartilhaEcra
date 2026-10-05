@@ -295,6 +295,7 @@ class _HostScreenState extends State<HostScreen> {
                       Text(
                           r.connected
                               ? '${r.address}${r.maxHeight < 100000 ? ' · até ${r.maxHeight}p ${r.maxFps} fps' : ''}'
+                                  '${r.encodingApplied == false ? ' · ajuste recusado' : ''}'
                               : 'A ligar… ${r.address}',
                           style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                     ],

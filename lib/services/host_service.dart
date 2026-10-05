@@ -32,6 +32,9 @@ class ReceiverSession {
   double scale = 1.0;
   int? sourceShort;
   DateTime scaleChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// null = ainda não aplicado; false = o sistema recusou os limites de vídeo.
+  bool? encodingApplied;
   bool authorized = false;
   bool connected = false;
   double? rttMs;
@@ -249,34 +252,62 @@ class HostService extends ChangeNotifier {
 
   /// Aplica débito máximo, fps e escala de acordo com a qualidade escolhida.
   Future<void> _applyEncoding(ReceiverSession s) async {
+    final cap = s.maxBitrate;
+    final maxBitrate = cap == null ? quality.maxBitrate : (cap < quality.maxBitrate ? cap : quality.maxBitrate);
+    final minBitrate = quality.minBitrate < maxBitrate ~/ 2 ? quality.minBitrate : maxBitrate ~/ 2;
+    final hostFps = Platform.isAndroid ? 30 : fps;
+    final maxFps = s.maxFps < hostFps ? s.maxFps : hostFps;
+    final effectiveScale = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
+    // Vídeos: manter os fps (imagem fluida) e, se faltar capacidade, baixar um pouco a nitidez.
+    // Texto/documentos: manter a nitidez e, se faltar capacidade, baixar os fps.
+    final degradation = optimizeForVideo
+        ? RTCDegradationPreference.MAINTAIN_FRAMERATE
+        : quality == StreamQuality.economy
+            ? RTCDegradationPreference.BALANCED
+            : RTCDegradationPreference.MAINTAIN_RESOLUTION;
+
     for (final sender in s.senders) {
       if (sender.track?.kind != 'video') continue;
-      try {
-        final params = sender.parameters;
-        final encodings = params.encodings;
-        final enc = (encodings == null || encodings.isEmpty) ? RTCRtpEncoding() : encodings.first;
-        final cap = s.maxBitrate;
-        final maxBitrate = cap == null ? quality.maxBitrate : (cap < quality.maxBitrate ? cap : quality.maxBitrate);
-        final hostFps = Platform.isAndroid ? 30 : fps;
-        enc.maxBitrate = maxBitrate;
-        enc.minBitrate = quality.minBitrate < maxBitrate ~/ 2 ? quality.minBitrate : maxBitrate ~/ 2;
-        enc.maxFramerate = s.maxFps < hostFps ? s.maxFps : hostFps;
-        final effectiveScale = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
-        enc.scaleResolutionDownBy = effectiveScale;
-        params.encodings = [enc];
-        // Vídeos: manter os fps (imagem fluida) e, se faltar capacidade, baixar um pouco a nitidez.
-        // Texto/documentos: manter a nitidez e, se faltar capacidade, baixar os fps.
-        params.degradationPreference = optimizeForVideo
-            ? RTCDegradationPreference.MAINTAIN_FRAMERATE
-            : quality == StreamQuality.economy
-                ? RTCDegradationPreference.BALANCED
-                : RTCDegradationPreference.MAINTAIN_RESOLUTION;
-        await sender.setParameters(params);
-        // Diz ao recetor a escala aplicada (ele usa-a para calcular o tamanho original).
-        _send(s, {'type': 'encoding', 'scale': effectiveScale});
-      } catch (e) {
-        debugPrint('setParameters falhou: $e');
+      // Tentativas do mais completo para o mais simples. Uma codificação NOVA só com
+      // os campos necessários: reenviar os campos vazios devolvidos pelo Windows
+      // (ex.: scalabilityMode "") fazia o pedido inteiro ser rejeitado.
+      final attempts = <RTCRtpEncoding Function()>[
+        () => RTCRtpEncoding(
+              active: true,
+              maxBitrate: maxBitrate,
+              minBitrate: minBitrate,
+              maxFramerate: maxFps,
+              numTemporalLayers: null,
+              scaleResolutionDownBy: effectiveScale,
+            ),
+        () => RTCRtpEncoding(
+              active: true,
+              maxBitrate: maxBitrate,
+              maxFramerate: maxFps,
+              numTemporalLayers: null,
+              scaleResolutionDownBy: effectiveScale,
+            ),
+        () => RTCRtpEncoding(
+              active: true,
+              maxBitrate: maxBitrate,
+              numTemporalLayers: null,
+              scaleResolutionDownBy: effectiveScale,
+            ),
+      ];
+      var ok = false;
+      for (var i = 0; i < attempts.length && !ok; i++) {
+        try {
+          final params = sender.parameters;
+          params.encodings = [attempts[i]()];
+          params.degradationPreference = i == 0 ? degradation : null;
+          ok = await sender.setParameters(params);
+        } catch (e) {
+          debugPrint('setParameters (tentativa ${i + 1}) falhou: $e');
+        }
       }
+      s.encodingApplied = ok;
+      // Diz ao recetor a escala aplicada (ele usa-a para calcular o tamanho original).
+      _send(s, {'type': 'encoding', 'scale': ok ? effectiveScale : 1.0});
     }
   }
 
