@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'device_profile.dart';
@@ -42,7 +42,43 @@ class ReceiverService extends ChangeNotifier {
   int? _lastBytes;
   double? _lastTs;
 
+  // --- Adaptação automática ao desempenho deste aparelho ---
+  /// Degraus de resolução (lado mais curto) usados quando o aparelho não aguenta.
+  static const _levels = [1440, 1080, 900, 720, 540, 480];
+  late int _initialMaxHeight;
+  late int maxHeight;
+  late int maxFps;
+  int? _lastDecoded;
+  int? _lastDropped;
+  double? _lastDecodeTime;
+  int _badWindows = 0;
+  int _goodWindows = 0;
+  DateTime _lastAdjust = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Tempo médio de descodificação por imagem (ms) — para mostrar e para adaptar.
+  double? decodeMs;
+
+  /// true quando a resolução foi baixada automaticamente para este aparelho.
+  bool get adapted => maxHeight < _initialMaxHeight;
+
+  /// Limites que este aparelho pede ao Host.
+  void _computeLimits() {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final size = view.physicalSize;
+    final screenShort = size.isEmpty ? 1080 : size.shortestSide.round();
+    if (DeviceProfile.videoCompat) {
+      // Projetores/TV boxes: VP8 por software — até 1080p a 30 fps.
+      _initialMaxHeight = screenShort.clamp(480, 1080);
+      maxFps = 30;
+    } else {
+      _initialMaxHeight = screenShort.clamp(720, 2160);
+      maxFps = 60;
+    }
+    maxHeight = _initialMaxHeight;
+  }
+
   Future<void> connect() async {
+    _computeLimits();
     await renderer.initialize();
     try {
       _ws = await WebSocket.connect('ws://$ip:$port').timeout(const Duration(seconds: 6));
@@ -71,6 +107,10 @@ class ReceiverService extends ChangeNotifier {
       'platform': AppSettings.platformName,
       // Codec que este aparelho descodifica melhor (VP8 em projetores/TV boxes).
       'codec': DeviceProfile.videoCompat ? 'VP8' : 'H264',
+      // O que este aparelho consegue mostrar: o Host não envia mais do que isto.
+      'maxHeight': maxHeight,
+      'maxFps': maxFps,
+      if (DeviceProfile.videoCompat) 'maxBitrate': 6000000,
     });
   }
 
@@ -168,6 +208,11 @@ class ReceiverService extends ChangeNotifier {
         final v = r.values;
         if (r.type == 'inbound-rtp' && (v['kind'] == 'video' || v['mediaType'] == 'video')) {
           fps = _num(v['framesPerSecond']) ?? fps;
+          _adapt(
+            decoded: _num(v['framesDecoded'])?.toInt(),
+            dropped: _num(v['framesDropped'])?.toInt(),
+            decodeTime: _num(v['totalDecodeTime']),
+          );
           width = _num(v['frameWidth'])?.toInt() ?? width;
           height = _num(v['frameHeight'])?.toInt() ?? height;
           final bytes = _num(v['bytesReceived'])?.toInt();
@@ -189,6 +234,54 @@ class ReceiverService extends ChangeNotifier {
       }
       _notify();
     } catch (_) {}
+  }
+
+  /// Mede o desempenho da descodificação (janela de 1 s) e pede ao Host para
+  /// baixar/subir a resolução. Só olha para o tempo de descodificação e imagens
+  /// perdidas — um ecrã parado envia poucas imagens e isso não é um problema.
+  void _adapt({int? decoded, int? dropped, double? decodeTime}) {
+    if (decoded == null) return;
+    final dDecoded = _lastDecoded == null ? 0 : decoded - _lastDecoded!;
+    final dDropped = (dropped != null && _lastDropped != null) ? dropped - _lastDropped! : 0;
+    final dTime = (decodeTime != null && _lastDecodeTime != null) ? decodeTime - _lastDecodeTime! : null;
+    _lastDecoded = decoded;
+    _lastDropped = dropped;
+    _lastDecodeTime = decodeTime;
+    if (dDecoded < 5) return; // pouco movimento: nada a medir
+
+    final budgetMs = 1000 / maxFps;
+    if (dTime != null) decodeMs = dTime * 1000 / dDecoded;
+    final dropRatio = dDropped / (dDecoded + dDropped);
+    final struggling = (decodeMs != null && decodeMs! > budgetMs * 0.85) || dropRatio > 0.08;
+    final relaxed = (decodeMs == null || decodeMs! < budgetMs * 0.45) && dropRatio < 0.01;
+
+    if (struggling) {
+      _badWindows++;
+      _goodWindows = 0;
+    } else if (relaxed) {
+      _goodWindows++;
+      _badWindows = 0;
+    } else {
+      _badWindows = 0;
+      _goodWindows = 0;
+    }
+
+    final cooledDown = DateTime.now().difference(_lastAdjust) > const Duration(seconds: 6);
+    if (_badWindows >= 3 && cooledDown) {
+      final lower = _levels.where((l) => l < maxHeight).firstOrNull;
+      if (lower != null) _requestLimits(lower);
+      _badWindows = 0;
+    } else if (_goodWindows >= 30 && cooledDown && maxHeight < _initialMaxHeight) {
+      final higher = _levels.reversed.where((l) => l > maxHeight && l <= _initialMaxHeight).firstOrNull;
+      if (higher != null) _requestLimits(higher);
+      _goodWindows = 0;
+    }
+  }
+
+  void _requestLimits(int height) {
+    maxHeight = height;
+    _lastAdjust = DateTime.now();
+    _send({'type': 'adjust', 'maxHeight': maxHeight, 'maxFps': maxFps});
   }
 
   /// Captura a imagem atual do ecrã recebido (PNG).

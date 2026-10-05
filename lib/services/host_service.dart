@@ -22,6 +22,16 @@ class ReceiverSession {
   final String address;
   String name = 'Recetor';
   String preferredCodec = 'H264';
+
+  /// Limites pedidos pelo recetor (o que o aparelho dele consegue mostrar).
+  int maxHeight = 100000;
+  int maxFps = 60;
+  int? maxBitrate;
+
+  /// Escala aplicada ao vídeo deste recetor e tamanho do ecrã capturado (lado curto).
+  double scale = 1.0;
+  int? sourceShort;
+  DateTime scaleChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool authorized = false;
   bool connected = false;
   double? rttMs;
@@ -132,6 +142,9 @@ class HostService extends ChangeNotifier {
       case 'hello':
         s.name = (msg['name'] ?? 'Recetor').toString();
         s.preferredCodec = (msg['codec'] ?? 'H264').toString();
+        s.maxHeight = (msg['maxHeight'] as num?)?.toInt() ?? s.maxHeight;
+        s.maxFps = (msg['maxFps'] as num?)?.toInt() ?? s.maxFps;
+        s.maxBitrate = (msg['maxBitrate'] as num?)?.toInt();
         if (msg['pin']?.toString() != pin) {
           _send(s, {'type': 'rejected', 'reason': 'Código de ligação errado.'});
           await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -179,6 +192,16 @@ class HostService extends ChangeNotifier {
         } else {
           s.pendingCandidates.add(c);
         }
+        break;
+      case 'adjust':
+        // O recetor está com dificuldade (ou já folgou): muda a resolução/fps só para ele.
+        if (!s.authorized) return;
+        s.maxHeight = (msg['maxHeight'] as num?)?.toInt() ?? s.maxHeight;
+        s.maxFps = (msg['maxFps'] as num?)?.toInt() ?? s.maxFps;
+        s.scale = _scaleFor(s);
+        s.scaleChangedAt = DateTime.now();
+        await _applyEncoding(s);
+        _notify();
         break;
       case 'bye':
         _removeSession(s);
@@ -229,10 +252,13 @@ class HostService extends ChangeNotifier {
         final params = sender.parameters;
         final encodings = params.encodings;
         final enc = (encodings == null || encodings.isEmpty) ? RTCRtpEncoding() : encodings.first;
-        enc.maxBitrate = quality.maxBitrate;
-        enc.minBitrate = quality.minBitrate;
-        enc.maxFramerate = Platform.isAndroid ? 30 : fps;
-        enc.scaleResolutionDownBy = quality.scaleDown;
+        final cap = s.maxBitrate;
+        final maxBitrate = cap == null ? quality.maxBitrate : (cap < quality.maxBitrate ? cap : quality.maxBitrate);
+        final hostFps = Platform.isAndroid ? 30 : fps;
+        enc.maxBitrate = maxBitrate;
+        enc.minBitrate = quality.minBitrate < maxBitrate ~/ 2 ? quality.minBitrate : maxBitrate ~/ 2;
+        enc.maxFramerate = s.maxFps < hostFps ? s.maxFps : hostFps;
+        enc.scaleResolutionDownBy = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
         params.encodings = [enc];
         // Partilha de ecrã: manter a nitidez e, se faltar capacidade, baixar os fps.
         params.degradationPreference = quality == StreamQuality.economy
@@ -243,6 +269,13 @@ class HostService extends ChangeNotifier {
         debugPrint('setParameters falhou: $e');
       }
     }
+  }
+
+  /// Escala necessária para não enviar mais resolução do que o recetor mostra.
+  double _scaleFor(ReceiverSession s) {
+    final src = s.sourceShort;
+    if (src == null || src <= s.maxHeight) return 1.0;
+    return src / s.maxHeight;
   }
 
   Future<void> setQuality(StreamQuality q) async {
@@ -271,6 +304,25 @@ class HostService extends ChangeNotifier {
               (r.values['state'] == 'succeeded' || r.values['nominated'] == true)) {
             final rtt = _num(r.values['currentRoundTripTime']);
             if (rtt != null) s.rttMs = rtt * 1000;
+          } else if (r.type == 'outbound-rtp' &&
+              (r.values['kind'] == 'video' || r.values['mediaType'] == 'video')) {
+            // Tamanho enviado × escala atual = tamanho real do ecrã capturado.
+            final w = _num(r.values['frameWidth']);
+            final h = _num(r.values['frameHeight']);
+            // Depois de mudar a escala, espera que as imagens já venham no novo tamanho.
+            final settled = DateTime.now().difference(s.scaleChangedAt) > const Duration(seconds: 4);
+            if (settled && w != null && h != null && w > 0 && h > 0) {
+              final effective = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
+              final estimate = ((w < h ? w : h) * effective).round();
+              // Fica com o maior valor visto (no arranque o codificador pode enviar menos).
+              if (estimate > (s.sourceShort ?? 0) + 8) s.sourceShort = estimate;
+              final wanted = _scaleFor(s);
+              if ((wanted - s.scale).abs() > 0.05) {
+                s.scale = wanted;
+                s.scaleChangedAt = DateTime.now();
+                await _applyEncoding(s);
+              }
+            }
           }
         }
       } catch (_) {}

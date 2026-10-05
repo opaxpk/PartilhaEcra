@@ -235,7 +235,10 @@ class _HostScreenState extends State<HostScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(r.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-                      Text(r.connected ? r.address : 'A ligar… ${r.address}',
+                      Text(
+                          r.connected
+                              ? '${r.address}${r.maxHeight < 100000 ? ' · até ${r.maxHeight}p ${r.maxFps} fps' : ''}'
+                              : 'A ligar… ${r.address}',
                           style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                     ],
                   ),
