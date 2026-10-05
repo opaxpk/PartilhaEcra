@@ -17,7 +17,10 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
@@ -44,7 +47,11 @@ jobs:
   android:
     needs: check
     if: needs.check.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    # Servidores Windows: mais disponíveis (os Linux falharam no incidente de 05/10/2026).
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -58,9 +65,9 @@ jobs:
       - name: Gerar pastas das plataformas
         run: |
           flutter create --platforms=android,windows --org com.opaxpk --project-name partilha_ecra .
-          python3 scripts/setup_platforms.py
+          python scripts/setup_platforms.py
           flutter pub get
-          python3 scripts/patch_webrtc.py
+          python scripts/patch_webrtc.py
           dart run flutter_launcher_icons
       - name: Chave de assinatura
         env:
@@ -129,7 +136,10 @@ jobs:
 
   release:
     needs: [check, android, windows]
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write
     steps:
