@@ -88,7 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(value: 'auto', label: Text('Automático')),
-                      ButtonSegment(value: 'hw', label: Text('Hardware')),
+                      ButtonSegment(value: 'hw', label: Text('Hardware (exp.)')),
                       ButtonSegment(value: 'sw', label: Text('Software')),
                     ],
                     selected: {_decoderMode},
@@ -101,8 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Em uso: ${DeviceProfile.modeLabel}. Hardware dá a imagem mais nítida e leve; '
-                    'Software é o último recurso se a app fechar ou a imagem ficar preta.',
+                    'Em uso: ${DeviceProfile.modeLabel}. Software funciona em todos os aparelhos. '
+                    'Hardware é mais leve, mas em alguns projetores dá imagem verde/riscada ou fecha a app.',
                     style: const TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 28),

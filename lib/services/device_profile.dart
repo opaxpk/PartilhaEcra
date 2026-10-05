@@ -50,8 +50,12 @@ class DeviceProfile {
     } catch (_) {}
 
     final mode = AppSettings.decoderMode;
-    videoCompat = mode == 'sw';
-    hwByteBuffer = mode == 'hw' || (mode == 'auto' && (isTv || chipsetNeedsCare));
+    // Projetores/TV boxes: em "Automático" usa Software — o descodificador por hardware
+    // destes chips (ex.: Rockchip) entrega imagens num formato que o WebRTC lê mal
+    // (imagem verde/riscada) ou crasha. Hardware fica como opção manual.
+    final weakDevice = isTv || chipsetNeedsCare;
+    videoCompat = mode == 'sw' || (mode == 'auto' && weakDevice);
+    hwByteBuffer = mode == 'hw' && weakDevice;
 
     try {
       await _channel.invokeMethod('setHwByteBuffer', hwByteBuffer);
@@ -68,6 +72,6 @@ class DeviceProfile {
   static String get modeLabel => videoCompat
       ? 'Software (VP8)'
       : hwByteBuffer
-          ? 'Hardware (modo projetor)'
+          ? 'Hardware (experimental)'
           : 'Hardware';
 }
