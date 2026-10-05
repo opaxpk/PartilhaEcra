@@ -76,7 +76,15 @@ class AppSettings {
     await _p.setStringList('recentHosts', list);
   }
 
-  /// Modo de compatibilidade de vídeo. null = automático (ligado em projetores/TV boxes).
+  /// Descodificação de vídeo neste aparelho: 'auto', 'hw' (hardware) ou 'sw' (software).
+  static String get decoderMode {
+    final v = _p.getString('decoderMode');
+    return (v == 'hw' || v == 'sw') ? v! : 'auto';
+  }
+
+  static Future<void> setDecoderMode(String v) => _p.setString('decoderMode', v);
+
+  /// (Antigo) Modo de compatibilidade de vídeo — já não é usado.
   static bool? get videoCompat => _p.getBool('videoCompat');
   static Future<void> setVideoCompat(bool? v) async {
     if (v == null) {

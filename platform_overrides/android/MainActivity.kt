@@ -76,6 +76,12 @@ class MainActivity : FlutterActivity() {
                         multicastLock = null
                         result.success(true)
                     }
+                    "setHwByteBuffer" -> {
+                        // Lido pela flutter_webrtc (corrigida em scripts/patch_webrtc.py) ao criar
+                        // o descodificador: hardware a entregar imagens em memória, sem textura.
+                        System.setProperty("partilhaecra.hwByteBuffer", if (call.arguments == true) "1" else "0")
+                        result.success(true)
+                    }
                     "deviceInfo" -> {
                         val uiMode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
                         val isTv = uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||

@@ -74,6 +74,14 @@ class ReceiverService extends ChangeNotifier {
   /// Débito adequado a cada resolução (VP8, conteúdo de ecrã/vídeo a 30 fps).
   /// No Windows é este limite que faz o PC baixar a resolução sozinho.
   static int bitrateFor(int height) {
+    if (DeviceProfile.hwByteBuffer) {
+      // Descodificação por hardware: aguenta mais débito → imagem mais limpa.
+      if (height >= 1080) return 8000000;
+      if (height >= 900) return 6000000;
+      if (height >= 720) return 4500000;
+      if (height >= 540) return 2500000;
+      return 1800000;
+    }
     if (height >= 1080) return 5000000;
     if (height >= 900) return 3500000;
     if (height >= 720) return 2500000;
@@ -86,7 +94,12 @@ class ReceiverService extends ChangeNotifier {
     final view = WidgetsBinding.instance.platformDispatcher.views.first;
     final size = view.physicalSize;
     final screenShort = size.isEmpty ? 1080 : size.shortestSide.round();
-    if (DeviceProfile.videoCompat) {
+    if (DeviceProfile.hwByteBuffer) {
+      // Projetores/TV boxes com o chip a descodificar: 1080p limpo a 30 fps.
+      _initialMaxHeight = screenShort.clamp(480, 1080);
+      maxFps = 30;
+      maxHeight = _initialMaxHeight;
+    } else if (DeviceProfile.videoCompat) {
       // Projetores/TV boxes: VP8 por software — até 1080p a 30 fps.
       _initialMaxHeight = screenShort.clamp(480, 1080);
       maxFps = 30;
@@ -132,7 +145,7 @@ class ReceiverService extends ChangeNotifier {
       // O que este aparelho consegue mostrar: o Host não envia mais do que isto.
       'maxHeight': maxHeight,
       'maxFps': maxFps,
-      if (DeviceProfile.videoCompat) 'maxBitrate': bitrateFor(maxHeight),
+      if (DeviceProfile.lowPower) 'maxBitrate': bitrateFor(maxHeight),
     });
   }
 
@@ -250,6 +263,10 @@ class ReceiverService extends ChangeNotifier {
         final v = r.values;
         if (r.type == 'inbound-rtp' && (v['kind'] == 'video' || v['mediaType'] == 'video')) {
           fps = _num(v['framesPerSecond']) ?? fps;
+          _checkHardwareDecoding(
+            received: _num(v['framesReceived'])?.toInt(),
+            decoded: _num(v['framesDecoded'])?.toInt(),
+          );
           _adapt(
             decoded: _num(v['framesDecoded'])?.toInt(),
             dropped: _num(v['framesDropped'])?.toInt(),
@@ -328,6 +345,20 @@ class ReceiverService extends ChangeNotifier {
     }
   }
 
+  DateTime? _videoSince;
+
+  /// Modo hardware (projetor): se chegam imagens mas nenhuma é descodificada,
+  /// o chip não está a funcionar com o WebRTC → passa ao modo Software.
+  void _checkHardwareDecoding({int? received, int? decoded}) {
+    if (!DeviceProfile.hwByteBuffer || received == null || received < 30) return;
+    _videoSince ??= DateTime.now();
+    if ((decoded ?? 0) > 0) return;
+    if (DateTime.now().difference(_videoSince!) < const Duration(seconds: 8)) return;
+    AppSettings.setDecoderMode('sw');
+    _fail('O descodificador por hardware deste aparelho não mostrou imagem. '
+        'Mudei para o modo Software — fecha e volta a abrir a app.');
+  }
+
   /// Deduz o tamanho original do ecrã do Host: imagem recebida × escala aplicada.
   void _trackSourceSize() {
     final w = width, h = height;
@@ -352,7 +383,7 @@ class ReceiverService extends ChangeNotifier {
       'maxHeight': maxHeight,
       'maxFps': maxFps,
       'scale': scale,
-      if (DeviceProfile.videoCompat) 'maxBitrate': bitrateFor(maxHeight),
+      if (DeviceProfile.lowPower) 'maxBitrate': bitrateFor(maxHeight),
     });
   }
 

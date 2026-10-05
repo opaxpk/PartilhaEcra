@@ -288,7 +288,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                 _rx.renderer,
                 objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
                   // Em projetores/TV boxes o filtro mais simples poupa processador.
-                filterQuality: DeviceProfile.videoCompat ? FilterQuality.low : FilterQuality.medium,
+                filterQuality: DeviceProfile.lowPower ? FilterQuality.low : FilterQuality.medium,
               ),
             ),
           ),

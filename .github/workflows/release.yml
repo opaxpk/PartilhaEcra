@@ -60,6 +60,7 @@ jobs:
           flutter create --platforms=android,windows --org com.opaxpk --project-name partilha_ecra .
           python3 scripts/setup_platforms.py
           flutter pub get
+          python3 scripts/patch_webrtc.py
           dart run flutter_launcher_icons
       - name: Chave de assinatura
         env:
@@ -105,6 +106,7 @@ jobs:
           flutter create --platforms=android,windows --org com.opaxpk --project-name partilha_ecra .
           python scripts/setup_platforms.py
           flutter pub get
+          python scripts/patch_webrtc.py
           dart run flutter_launcher_icons
       - name: Compilar EXE
         shell: bash

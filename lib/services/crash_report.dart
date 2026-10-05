@@ -49,8 +49,9 @@ class CrashReport {
       if (r.contains('AndroidVideoDecoder') ||
           r.contains('decoder-texture-thread') ||
           r.contains('MediaCodec')) {
-        if (AppSettings.videoCompat != true) {
-          await AppSettings.setVideoCompat(true);
+        // O descodificador por hardware deste aparelho falhou: passa a software.
+        if (AppSettings.decoderMode != 'sw') {
+          await AppSettings.setDecoderMode('sw');
           enabledCompat = true;
         }
       }
