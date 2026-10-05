@@ -1,0 +1,29 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+.metadata
+pubspec.lock
+
+# Pastas de plataforma geradas pelo `flutter create` + scripts/setup_platforms.py
+/android/
+/windows/
+/ios/
+/linux/
+/macos/
+/web/
+
+# Saída do instalador
+/dist/
+
+# NUNCA enviar a chave de assinatura
+*.jks
+*.keystore
+key.properties

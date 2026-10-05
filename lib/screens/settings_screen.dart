@@ -1,0 +1,129 @@
+import 'package:flutter/material.dart';
+
+import '../config.dart';
+import '../services/settings.dart';
+import '../services/updater.dart';
+import '../theme.dart';
+import '../widgets/common.dart';
+import '../widgets/update_dialog.dart';
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final _name = TextEditingController(text: AppSettings.deviceName);
+  String _version = '';
+  bool _checking = false;
+  bool _autoUpdates = AppSettings.autoCheckUpdates;
+
+  @override
+  void initState() {
+    super.initState();
+    Updater.currentVersion().then((v) {
+      if (mounted) setState(() => _version = v);
+    });
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveName() async {
+    await AppSettings.setDeviceName(_name.text);
+    if (mounted) showSnack(context, 'Nome guardado.');
+  }
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    await checkForUpdates(context, silent: false);
+    if (mounted) setState(() => _checking = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Definições', style: TextStyle(fontWeight: FontWeight.w700))),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              children: [
+                const SectionLabel('Nome deste dispositivo'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _name,
+                        maxLength: 40,
+                        decoration: const InputDecoration(counterText: '', isDense: true),
+                        onSubmitted: (_) => _saveName(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(onPressed: _saveName, child: const Text('Guardar')),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text('É o nome que os outros veem na lista de dispositivos.',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                const SizedBox(height: 28),
+                const SectionLabel('Atualizações'),
+                const SizedBox(height: 8),
+                Panel(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Procurar atualizações ao abrir'),
+                    subtitle: const Text('Avisa quando há uma versão nova no GitHub',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                    value: _autoUpdates,
+                    onChanged: (v) {
+                      AppSettings.setAutoCheckUpdates(v);
+                      setState(() => _autoUpdates = v);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _checking ? null : _check,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  icon: _checking
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.system_update_alt),
+                  label: const Text('Verificar atualizações agora'),
+                ),
+                const SizedBox(height: 28),
+                const SectionLabel('Sobre'),
+                const SizedBox(height: 8),
+                Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('PartilhaEcra ${_version.isEmpty ? '' : 'v$_version'}',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      const SelectableText('github.com/$kGithubRepo',
+                          style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      const Text('Portas usadas: UDP $kDiscoveryPort (descoberta) e TCP $kSignalPort (ligação).',
+                          style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,86 @@
+import 'dart:io';
+import 'dart:math';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Qualidade da transmissão (controla o débito e a escala de resolução).
+enum StreamQuality { auto, economy, max }
+
+extension StreamQualityInfo on StreamQuality {
+  String get label => switch (this) {
+        StreamQuality.auto => 'Auto',
+        StreamQuality.economy => 'Poupança',
+        StreamQuality.max => 'Máxima',
+      };
+
+  /// Débito máximo em bits por segundo.
+  int get maxBitrate => switch (this) {
+        StreamQuality.auto => 8000000,
+        StreamQuality.economy => 3000000,
+        StreamQuality.max => 20000000,
+      };
+
+  /// Fator de redução da resolução (1.0 = resolução nativa).
+  double get scaleDown => switch (this) {
+        StreamQuality.auto => 1.0,
+        StreamQuality.economy => 1.5,
+        StreamQuality.max => 1.0,
+      };
+}
+
+class AppSettings {
+  static late SharedPreferences _p;
+
+  static Future<void> init() async {
+    _p = await SharedPreferences.getInstance();
+    if (_p.getString('deviceId') == null) {
+      await _p.setString('deviceId', _randomHex(12));
+    }
+    if ((_p.getString('deviceName') ?? '').trim().isEmpty) {
+      await _p.setString('deviceName', _defaultName());
+    }
+  }
+
+  static String get deviceId => _p.getString('deviceId')!;
+
+  static String get deviceName => _p.getString('deviceName')!;
+  static Future<void> setDeviceName(String name) async {
+    final clean = name.trim();
+    if (clean.isEmpty) return;
+    await _p.setString('deviceName', clean.length > 40 ? clean.substring(0, 40) : clean);
+  }
+
+  static StreamQuality get quality =>
+      StreamQuality.values[(_p.getInt('quality') ?? 0).clamp(0, StreamQuality.values.length - 1)];
+  static Future<void> setQuality(StreamQuality q) => _p.setInt('quality', q.index);
+
+  static int get fps => _p.getInt('fps') ?? 60;
+  static Future<void> setFps(int v) => _p.setInt('fps', v);
+
+  static bool get autoCheckUpdates => _p.getBool('autoCheckUpdates') ?? true;
+  static Future<void> setAutoCheckUpdates(bool v) => _p.setBool('autoCheckUpdates', v);
+
+  /// Versão que o utilizador escolheu ignorar no aviso de atualização.
+  static String? get skippedVersion => _p.getString('skippedVersion');
+  static Future<void> setSkippedVersion(String v) => _p.setString('skippedVersion', v);
+
+  static String get platformName => Platform.isAndroid
+      ? 'Android'
+      : Platform.isWindows
+          ? 'Windows'
+          : Platform.operatingSystem;
+
+  static String _defaultName() {
+    if (Platform.isWindows) {
+      final host = Platform.localHostname.trim();
+      if (host.isNotEmpty) return host;
+    }
+    return '$platformName-${_randomHex(4).toUpperCase()}';
+  }
+
+  static String _randomHex(int length) {
+    final r = Random.secure();
+    const chars = '0123456789abcdef';
+    return List.generate(length, (_) => chars[r.nextInt(16)]).join();
+  }
+}
