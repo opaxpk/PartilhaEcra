@@ -60,7 +60,13 @@ jobs:
           dart run flutter_launcher_icons
       - name: Compilar EXE
         run: flutter build windows --release
+      - name: Testar instalador
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=0.0.0" installer\PartilhaEcra.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: PartilhaEcra-windows-teste
-          path: build/windows/x64/runner/Release/
+          path: dist/PartilhaEcra-Setup.exe
