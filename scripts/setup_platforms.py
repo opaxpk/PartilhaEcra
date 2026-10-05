@@ -131,6 +131,13 @@ def patch_android() -> None:
         )
     write(gradle, g)
     write(android / "app/proguard-rules.pro", read(OVR / "android/proguard-rules.pro"))
+
+    # No Windows o projeto (D:) e as bibliotecas (C:) ficam em discos diferentes e a
+    # compilação incremental de Kotlin falha ("different roots"). Desligada.
+    props = android / "gradle.properties"
+    p_text = read(props) if props.exists() else ""
+    if "kotlin.incremental" not in p_text:
+        write(props, p_text.rstrip("\n") + "\nkotlin.incremental=false\n")
     print(f"Android preparado (package {package}).")
 
 
