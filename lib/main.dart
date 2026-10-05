@@ -14,6 +14,10 @@ Future<void> main() async {
   await AppSettings.init();
   await CrashReport.checkAtStartup();
   await DeviceProfile.init();
+  if (DeviceProfile.isTv) {
+    // Projetor/TV: o contorno do item selecionado aparece logo, sem esperar por uma tecla.
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+  }
 
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();

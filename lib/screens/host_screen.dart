@@ -142,6 +142,7 @@ class _HostScreenState extends State<HostScreen> {
         ],
         const SizedBox(height: 32),
         FilledButton.icon(
+          autofocus: true,
           onPressed: _host.starting ? null : _start,
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(56),

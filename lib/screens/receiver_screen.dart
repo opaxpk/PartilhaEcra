@@ -163,7 +163,7 @@ class _NearbyDevicesPanelState extends State<NearbyDevicesPanel> {
               : ListView.separated(
                   itemCount: sharing.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) => _DeviceTile(device: sharing[i]),
+                  itemBuilder: (context, i) => _DeviceTile(device: sharing[i], autofocus: i == 0),
                 ),
         ),
         const SizedBox(height: 12),
@@ -201,12 +201,14 @@ class _NearbyDevicesPanelState extends State<NearbyDevicesPanel> {
 }
 
 class _DeviceTile extends StatelessWidget {
-  const _DeviceTile({required this.device});
+  const _DeviceTile({required this.device, this.autofocus = false});
   final DiscoveredDevice device;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return FocusCard(
+      autofocus: autofocus,
       onTap: () => connectToHost(context, ip: device.ip, port: device.port, name: device.name),
       child: Padding(
           padding: const EdgeInsets.all(14),

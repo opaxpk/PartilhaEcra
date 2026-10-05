@@ -130,7 +130,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
         },
       },
       child: Focus(
-        autofocus: true,
+        canRequestFocus: false,
+        skipTraversal: true,
         child: ListenableBuilder(
           listenable: _rx,
           builder: (context, _) => Scaffold(
@@ -265,7 +266,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
                 const SizedBox(height: 12),
                 Text(_rx.message ?? '', textAlign: TextAlign.center),
                 const SizedBox(height: 20),
-                FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Voltar')),
+                FilledButton(
+                  autofocus: true,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Voltar'),
+                ),
               ],
             ),
           ),

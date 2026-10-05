@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/crash_report.dart';
-import '../services/device_profile.dart';
 import '../services/settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -76,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
       color: AppColors.accent,
       onColor: AppColors.onAccent,
       highlighted: true,
-      autofocus: DeviceProfile.isTv,
+      autofocus: true,
       onTap: _openHost,
       footer: wide ? 'Atalho: Ctrl + Shift + H' : null,
     );
@@ -109,8 +108,10 @@ class _HomeScreenState extends State<HomeScreen> {
         const SingleActivator(LogicalKeyboardKey.keyH, control: true, shift: true): _openHost,
         const SingleActivator(LogicalKeyboardKey.keyR, control: true, shift: true): _openReceiver,
       },
+      // Não pode receber foco: um nó do tamanho do ecrã impedia as setas de navegar.
       child: Focus(
-        autofocus: true,
+        canRequestFocus: false,
+        skipTraversal: true,
         child: Scaffold(
           body: SafeArea(
             child: LayoutBuilder(
