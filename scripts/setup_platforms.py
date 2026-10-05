@@ -80,12 +80,14 @@ def patch_android() -> None:
     g = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", g)
     if "keystorePropertiesFile" not in g:
         loader = (
-            'val keystoreProperties = java.util.Properties()\n'
+            'val keystoreProperties = Properties()\n'
             'val keystorePropertiesFile = rootProject.file("key.properties")\n'
             'if (keystorePropertiesFile.exists()) {\n'
-            '    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))\n'
+            '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
             '}\n\n'
         )
+        # Em .kts, "java" no topo resolve para a extensão do Gradle: é preciso importar.
+        g = "import java.io.FileInputStream\nimport java.util.Properties\n\n" + g
         g = g.replace("android {", loader + "android {", 1)
         signing = (
             '    signingConfigs {\n'
