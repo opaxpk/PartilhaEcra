@@ -1,13 +1,49 @@
-# Publica uma nova versão quando é criada uma tag "v*" (ex.: v1.0.1).
-# A app instalada deteta esta Release e oferece a atualização automaticamente.
+# Publica uma nova versão automaticamente:
+#   - quando a "version:" do pubspec.yaml muda e é enviada para o main, ou
+#   - quando é criada uma tag "v*" (ex.: v1.0.1).
+# Se a Release dessa versão já existir, não faz nada.
+# A app instalada deteta a nova Release e oferece a atualização.
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+[:space:]]+).*/\1/')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "A Release v$VERSION já existe — nada a fazer."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Vai ser publicada a v$VERSION."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   android:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -45,7 +81,7 @@ jobs:
           } > android/key.properties
       - name: Compilar APK
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.check.outputs.version }}"
           flutter build apk --release --build-name="$VERSION" --build-number=${{ github.run_number }}
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/PartilhaEcra.apk
@@ -55,6 +91,8 @@ jobs:
           path: dist/PartilhaEcra.apk
 
   windows:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -71,12 +109,12 @@ jobs:
       - name: Compilar EXE
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.check.outputs.version }}"
           flutter build windows --release --build-name="$VERSION" --build-number=${{ github.run_number }}
       - name: Criar instalador e ZIP
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = "${{ needs.check.outputs.version }}"
           choco install innosetup -y --no-progress | Out-Null
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer\PartilhaEcra.iss
@@ -88,7 +126,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, windows]
+    needs: [check, android, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -99,5 +137,8 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: PartilhaEcra v${{ needs.check.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
           generate_release_notes: true

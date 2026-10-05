@@ -41,12 +41,15 @@ A app consulta `https://api.github.com/repos/opaxpk/PartilhaEcra/releases/latest
 
 ## Publicar uma nova versão
 
+Muda a versão no `pubspec.yaml` (ex.: `version: 1.0.1+2`) e envia para o `main`:
+
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git commit -am "Versão 1.0.1"
+git push
 ```
 
-O workflow **Release** compila o APK e o EXE, cria a Release, e todas as apps instaladas passam a oferecer a atualização.
+O workflow **Release** vê que ainda não existe a Release `v1.0.1`, compila o APK e o EXE, publica-a,
+e todas as apps instaladas passam a oferecer a atualização. (Criar uma tag `v1.0.1` também funciona.)
 
 ### Segredos necessários (Settings → Secrets and variables → Actions)
 
