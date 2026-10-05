@@ -52,8 +52,18 @@ class ReceiverService extends ChangeNotifier {
   int? _lastDropped;
   double? _lastDecodeTime;
   int _badWindows = 0;
+
+  /// Resolução que já se provou demasiado pesada: não volta a subir até lá.
+  int? _ceiling;
   int _goodWindows = 0;
   DateTime _lastAdjust = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Escala que o Host está a aplicar ao vídeo deste recetor (1.0 = original).
+  double _hostScale = 1.0;
+  DateTime _hostScaleChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Lado curto do ecrã original do Host, deduzido a partir do que chega.
+  int? _sourceShort;
 
   /// Tempo médio de descodificação por imagem (ms) — para mostrar e para adaptar.
   double? decodeMs;
@@ -70,11 +80,13 @@ class ReceiverService extends ChangeNotifier {
       // Projetores/TV boxes: VP8 por software — até 1080p a 30 fps.
       _initialMaxHeight = screenShort.clamp(480, 1080);
       maxFps = 30;
+      // Começa em 720p (o que estes aparelhos aguentam por software); sobe se houver folga.
+      maxHeight = _initialMaxHeight < 720 ? _initialMaxHeight : 720;
     } else {
       _initialMaxHeight = screenShort.clamp(720, 2160);
       maxFps = 60;
+      maxHeight = _initialMaxHeight;
     }
-    maxHeight = _initialMaxHeight;
   }
 
   Future<void> connect() async {
@@ -129,6 +141,16 @@ class ReceiverService extends ChangeNotifier {
         await AppSettings.addRecentHost(ip);
         status = ReceiverStatus.waitingVideo;
         _notify();
+        break;
+      case 'sourceChanged':
+        // O Host trocou de ecrã/janela: volta a medir o tamanho original.
+        _sourceShort = null;
+        _hostScale = 1.0;
+        _hostScaleChangedAt = DateTime.now();
+        break;
+      case 'encoding':
+        _hostScale = (msg['scale'] as num?)?.toDouble() ?? _hostScale;
+        _hostScaleChangedAt = DateTime.now();
         break;
       case 'rejected':
         _fail((msg['reason'] ?? 'Ligação recusada.').toString());
@@ -215,12 +237,15 @@ class ReceiverService extends ChangeNotifier {
           );
           width = _num(v['frameWidth'])?.toInt() ?? width;
           height = _num(v['frameHeight'])?.toInt() ?? height;
+          _trackSourceSize();
           final bytes = _num(v['bytesReceived'])?.toInt();
           final ts = r.timestamp;
           if (bytes != null) {
             if (_lastBytes != null && _lastTs != null && ts > _lastTs!) {
               // timestamp em milissegundos (formato standard do WebRTC)
-              final seconds = (ts - _lastTs!) / 1000.0;
+              // O timestamp pode vir em microssegundos (Android/Windows) ou milissegundos.
+              final delta = ts - _lastTs!;
+              final seconds = delta > 100000 ? delta / 1e6 : delta / 1000.0;
               if (seconds > 0) mbps = (bytes - _lastBytes!) * 8 / seconds / 1e6;
             }
             _lastBytes = bytes;
@@ -269,19 +294,40 @@ class ReceiverService extends ChangeNotifier {
     final cooledDown = DateTime.now().difference(_lastAdjust) > const Duration(seconds: 6);
     if (_badWindows >= 3 && cooledDown) {
       final lower = _levels.where((l) => l < maxHeight).firstOrNull;
-      if (lower != null) _requestLimits(lower);
+      if (lower != null) {
+        _ceiling = maxHeight;
+        _requestLimits(lower);
+      }
       _badWindows = 0;
     } else if (_goodWindows >= 30 && cooledDown && maxHeight < _initialMaxHeight) {
-      final higher = _levels.reversed.where((l) => l > maxHeight && l <= _initialMaxHeight).firstOrNull;
+      final higher = _levels.reversed
+          .where((l) => l > maxHeight && l <= _initialMaxHeight && (_ceiling == null || l < _ceiling!))
+          .firstOrNull;
       if (higher != null) _requestLimits(higher);
       _goodWindows = 0;
+    }
+  }
+
+  /// Deduz o tamanho original do ecrã do Host: imagem recebida × escala aplicada.
+  void _trackSourceSize() {
+    final w = width, h = height;
+    if (w == null || h == null || w <= 0 || h <= 0) return;
+    // Depois de uma mudança de escala, espera que as imagens já venham no novo tamanho.
+    if (DateTime.now().difference(_hostScaleChangedAt) < const Duration(seconds: 3)) return;
+    final estimate = ((w < h ? w : h) * _hostScale).round();
+    if (estimate > (_sourceShort ?? 0) + 8) {
+      _sourceShort = estimate;
+      // Primeira vez (ou ecrã maior): ajusta logo ao limite atual.
+      if (estimate / _hostScale > maxHeight * 1.05) _requestLimits(maxHeight);
     }
   }
 
   void _requestLimits(int height) {
     maxHeight = height;
     _lastAdjust = DateTime.now();
-    _send({'type': 'adjust', 'maxHeight': maxHeight, 'maxFps': maxFps});
+    final src = _sourceShort;
+    final scale = (src == null || src <= height) ? 1.0 : src / height;
+    _send({'type': 'adjust', 'maxHeight': maxHeight, 'maxFps': maxFps, 'scale': scale});
   }
 
   /// Captura a imagem atual do ecrã recebido (PNG).

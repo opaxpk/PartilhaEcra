@@ -37,7 +37,13 @@ class _HostScreenState extends State<HostScreen> {
       context: context,
       builder: (_) => const _SourcePickerDialog(),
     );
-    if (source != null && mounted) setState(() => _source = source);
+    if (source == null || !mounted) return;
+    setState(() => _source = source);
+    if (_host.running) {
+      await _host.switchSource(source);
+      if (!mounted) return;
+      showSnack(context, _host.error ?? 'A partilhar agora: ${source.name}');
+    }
   }
 
   @override
@@ -214,6 +220,34 @@ class _HostScreenState extends State<HostScreen> {
             ),
           ],
         ),
+        if (Platform.isWindows) ...[
+          const SizedBox(height: 14),
+          Panel(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: Row(
+              children: [
+                const Icon(Icons.monitor, color: AppColors.muted),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('A partilhar', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                      Text(_host.sourceLabel,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _pickSource,
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  label: const Text('Trocar ecrã/janela'),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         const SectionLabel('Recetores ligados'),
         const SizedBox(height: 8),

@@ -198,7 +198,9 @@ class HostService extends ChangeNotifier {
         if (!s.authorized) return;
         s.maxHeight = (msg['maxHeight'] as num?)?.toInt() ?? s.maxHeight;
         s.maxFps = (msg['maxFps'] as num?)?.toInt() ?? s.maxFps;
-        s.scale = _scaleFor(s);
+        // O recetor calcula a escala certa a partir das imagens que recebe.
+        final wanted = (msg['scale'] as num?)?.toDouble();
+        s.scale = wanted != null ? wanted.clamp(1.0, 8.0) : _scaleFor(s);
         s.scaleChangedAt = DateTime.now();
         await _applyEncoding(s);
         _notify();
@@ -258,13 +260,16 @@ class HostService extends ChangeNotifier {
         enc.maxBitrate = maxBitrate;
         enc.minBitrate = quality.minBitrate < maxBitrate ~/ 2 ? quality.minBitrate : maxBitrate ~/ 2;
         enc.maxFramerate = s.maxFps < hostFps ? s.maxFps : hostFps;
-        enc.scaleResolutionDownBy = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
+        final effectiveScale = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
+        enc.scaleResolutionDownBy = effectiveScale;
         params.encodings = [enc];
         // Partilha de ecrã: manter a nitidez e, se faltar capacidade, baixar os fps.
         params.degradationPreference = quality == StreamQuality.economy
             ? RTCDegradationPreference.BALANCED
             : RTCDegradationPreference.MAINTAIN_RESOLUTION;
         await sender.setParameters(params);
+        // Diz ao recetor a escala aplicada (ele usa-a para calcular o tamanho original).
+        _send(s, {'type': 'encoding', 'scale': effectiveScale});
       } catch (e) {
         debugPrint('setParameters falhou: $e');
       }
@@ -304,30 +309,62 @@ class HostService extends ChangeNotifier {
               (r.values['state'] == 'succeeded' || r.values['nominated'] == true)) {
             final rtt = _num(r.values['currentRoundTripTime']);
             if (rtt != null) s.rttMs = rtt * 1000;
-          } else if (r.type == 'outbound-rtp' &&
-              (r.values['kind'] == 'video' || r.values['mediaType'] == 'video')) {
-            // Tamanho enviado × escala atual = tamanho real do ecrã capturado.
-            final w = _num(r.values['frameWidth']);
-            final h = _num(r.values['frameHeight']);
-            // Depois de mudar a escala, espera que as imagens já venham no novo tamanho.
-            final settled = DateTime.now().difference(s.scaleChangedAt) > const Duration(seconds: 4);
-            if (settled && w != null && h != null && w > 0 && h > 0) {
-              final effective = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
-              final estimate = ((w < h ? w : h) * effective).round();
-              // Fica com o maior valor visto (no arranque o codificador pode enviar menos).
-              if (estimate > (s.sourceShort ?? 0) + 8) s.sourceShort = estimate;
-              final wanted = _scaleFor(s);
-              if ((wanted - s.scale).abs() > 0.05) {
-                s.scale = wanted;
-                s.scaleChangedAt = DateTime.now();
-                await _applyEncoding(s);
-              }
-            }
           }
         }
       } catch (_) {}
     }
     if (receivers.isNotEmpty) _notify();
+  }
+
+  /// Troca o ecrã/janela partilhado sem desligar os recetores (Windows).
+  Future<void> switchSource(DesktopCapturerSource source) async {
+    if (!running) return;
+    final MediaStream newStream;
+    try {
+      newStream = await CaptureHelper.captureScreen(source: source, fps: fps);
+    } catch (e) {
+      error = 'Não foi possível trocar para "${source.name}": $e';
+      _notify();
+      return;
+    }
+    final tracks = newStream.getVideoTracks();
+    if (tracks.isEmpty) return;
+    final newTrack = tracks.first;
+
+    for (final s in receivers) {
+      for (final sender in s.senders) {
+        if (sender.track?.kind != 'video') continue;
+        try {
+          await sender.replaceTrack(newTrack);
+        } catch (e) {
+          debugPrint('replaceTrack falhou: $e');
+        }
+      }
+      // O novo ecrã pode ter outro tamanho: o recetor volta a medir e pede a escala certa.
+      s.scale = 1.0;
+      s.sourceShort = null;
+      s.scaleChangedAt = DateTime.now();
+      _send(s, {'type': 'sourceChanged'});
+      await _applyEncoding(s);
+    }
+
+    final old = _stream;
+    _stream = newStream;
+    sourceLabel = source.name;
+    error = null;
+    newTrack.onEnded = () => stop();
+    if (old != null) {
+      for (final t in old.getTracks()) {
+        t.onEnded = null; // não parar a partilha por causa do ecrã antigo
+        try {
+          await t.stop();
+        } catch (_) {}
+      }
+      try {
+        await old.dispose();
+      } catch (_) {}
+    }
+    _notify();
   }
 
   void kick(ReceiverSession s) {
