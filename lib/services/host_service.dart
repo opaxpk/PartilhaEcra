@@ -63,6 +63,10 @@ class HostService extends ChangeNotifier {
   StreamQuality quality = AppSettings.quality;
   int fps = AppSettings.fps;
   bool optimizeForVideo = AppSettings.optimizeForVideo;
+
+  /// Ecrã/janela atual e fps a que está a ser capturado (Windows).
+  DesktopCapturerSource? _source;
+  int _captureFps = 60;
   String sourceLabel = '';
 
   /// IPs deste dispositivo na rede local (para ligar manualmente).
@@ -75,6 +79,8 @@ class HostService extends ChangeNotifier {
     _notify();
     try {
       pin = (Random.secure().nextInt(9000) + 1000).toString();
+      _source = source;
+      _captureFps = fps;
       _stream = await CaptureHelper.captureScreen(source: source, fps: fps);
       sourceLabel = source?.name ?? (Platform.isAndroid ? 'Ecrã do telemóvel' : 'Ecrã principal');
 
@@ -172,10 +178,13 @@ class HostService extends ChangeNotifier {
           'source': sourceLabel,
         });
         await _startPeer(s);
+        await _syncCaptureFps();
         break;
       case 'answer':
         if (!s.authorized || s.pc == null) return;
-        final answerSdp = withBitrateHints(msg['sdp'] as String? ?? '', quality.maxBitrate ~/ 1000);
+        // O limite de débito negociado aqui é o que o Windows respeita de facto:
+        // com pouco débito e "Vídeos", o codificador baixa a resolução sozinho.
+        final answerSdp = withBitrateHints(msg['sdp'] as String? ?? '', _maxBitrateFor(s) ~/ 1000);
         await s.pc!.setRemoteDescription(RTCSessionDescription(answerSdp, 'answer'));
         s.remoteSet = true;
         for (final c in s.pendingCandidates) {
@@ -206,7 +215,12 @@ class HostService extends ChangeNotifier {
         final wanted = (msg['scale'] as num?)?.toDouble();
         s.scale = wanted != null ? wanted.clamp(1.0, 8.0) : _scaleFor(s);
         s.scaleChangedAt = DateTime.now();
+        final newCap = (msg['maxBitrate'] as num?)?.toInt();
+        final capChanged = newCap != null && newCap != s.maxBitrate;
+        if (newCap != null) s.maxBitrate = newCap;
         await _applyEncoding(s);
+        if (capChanged) await _renegotiate(s);
+        await _syncCaptureFps();
         _notify();
         break;
       case 'bye':
@@ -360,14 +374,51 @@ class HostService extends ChangeNotifier {
     if (receivers.isNotEmpty) _notify();
   }
 
+  /// Débito máximo para um recetor: o menor entre a qualidade escolhida e o que ele aguenta.
+  int _maxBitrateFor(ReceiverSession s) {
+    final cap = s.maxBitrate;
+    return cap == null || cap > quality.maxBitrate ? quality.maxBitrate : cap;
+  }
+
+  /// Renegoceia a ligação de um recetor (para aplicar um novo limite de débito no SDP)
+  /// sem cortar o vídeo.
+  Future<void> _renegotiate(ReceiverSession s) async {
+    final pc = s.pc;
+    if (pc == null) return;
+    try {
+      final offer = await pc.createOffer(<String, dynamic>{});
+      await pc.setLocalDescription(offer);
+      _send(s, {'type': 'offer', 'sdp': offer.sdp});
+    } catch (e) {
+      debugPrint('Renegociação falhou: $e');
+    }
+  }
+
+  /// Windows: captura só às fps que os recetores aguentam (o projetor pede 30).
+  /// Poupa o PC e, sobretudo, o aparelho que recebe.
+  Future<void> _syncCaptureFps() async {
+    if (!Platform.isWindows || !running) return;
+    var desired = fps;
+    for (final r in receivers) {
+      if (r.maxFps < desired) desired = r.maxFps;
+    }
+    if (desired == _captureFps) return;
+    await _replaceCapture(_source, desired, sourceChanged: false);
+  }
+
   /// Troca o ecrã/janela partilhado sem desligar os recetores (Windows).
   Future<void> switchSource(DesktopCapturerSource source) async {
     if (!running) return;
+    await _replaceCapture(source, _captureFps, sourceChanged: true);
+  }
+
+  Future<void> _replaceCapture(DesktopCapturerSource? source, int captureFps,
+      {required bool sourceChanged}) async {
     final MediaStream newStream;
     try {
-      newStream = await CaptureHelper.captureScreen(source: source, fps: fps);
+      newStream = await CaptureHelper.captureScreen(source: source, fps: captureFps);
     } catch (e) {
-      error = 'Não foi possível trocar para "${source.name}": $e';
+      error = 'Não foi possível capturar "${source?.name ?? 'o ecrã'}": $e';
       _notify();
       return;
     }
@@ -384,22 +435,26 @@ class HostService extends ChangeNotifier {
           debugPrint('replaceTrack falhou: $e');
         }
       }
-      // O novo ecrã pode ter outro tamanho: o recetor volta a medir e pede a escala certa.
-      s.scale = 1.0;
-      s.sourceShort = null;
-      s.scaleChangedAt = DateTime.now();
-      _send(s, {'type': 'sourceChanged'});
-      await _applyEncoding(s);
+      if (sourceChanged) {
+        // O novo ecrã pode ter outro tamanho: o recetor volta a medir e pede a escala certa.
+        s.scale = 1.0;
+        s.sourceShort = null;
+        s.scaleChangedAt = DateTime.now();
+        _send(s, {'type': 'sourceChanged'});
+        await _applyEncoding(s);
+      }
     }
 
     final old = _stream;
     _stream = newStream;
-    sourceLabel = source.name;
+    _source = source;
+    _captureFps = captureFps;
+    if (sourceChanged && source != null) sourceLabel = source.name;
     error = null;
     newTrack.onEnded = () => stop();
     if (old != null) {
       for (final t in old.getTracks()) {
-        t.onEnded = null; // não parar a partilha por causa do ecrã antigo
+        t.onEnded = null; // não parar a partilha por causa da captura antiga
         try {
           await t.stop();
         } catch (_) {}
@@ -435,7 +490,10 @@ class HostService extends ChangeNotifier {
     s.pc = null;
     pc?.close();
     _closeSocket(s);
-    if (removed) _notify();
+    if (removed) {
+      _notify();
+      unawaited(_syncCaptureFps());
+    }
   }
 
   Future<void> stop() async {

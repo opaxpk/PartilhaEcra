@@ -71,6 +71,16 @@ class ReceiverService extends ChangeNotifier {
   /// true quando a resolução foi baixada automaticamente para este aparelho.
   bool get adapted => maxHeight < _initialMaxHeight;
 
+  /// Débito adequado a cada resolução (VP8, conteúdo de ecrã/vídeo a 30 fps).
+  /// No Windows é este limite que faz o PC baixar a resolução sozinho.
+  static int bitrateFor(int height) {
+    if (height >= 1080) return 5000000;
+    if (height >= 900) return 3500000;
+    if (height >= 720) return 2500000;
+    if (height >= 540) return 1500000;
+    return 1000000;
+  }
+
   /// Limites que este aparelho pede ao Host.
   void _computeLimits() {
     final view = WidgetsBinding.instance.platformDispatcher.views.first;
@@ -122,7 +132,7 @@ class ReceiverService extends ChangeNotifier {
       // O que este aparelho consegue mostrar: o Host não envia mais do que isto.
       'maxHeight': maxHeight,
       'maxFps': maxFps,
-      if (DeviceProfile.videoCompat) 'maxBitrate': 6000000,
+      if (DeviceProfile.videoCompat) 'maxBitrate': bitrateFor(maxHeight),
     });
   }
 
@@ -180,6 +190,16 @@ class ReceiverService extends ChangeNotifier {
   }
 
   Future<void> _handleOffer(String? sdp) async {
+    // Nova proposta numa ligação que já existe = renegociação (ex.: novo limite de débito).
+    final existing = _pc;
+    if (existing != null) {
+      final offerSdp = DeviceProfile.videoCompat ? removeVideoCodecs(sdp ?? '', {'H264'}) : sdp;
+      await existing.setRemoteDescription(RTCSessionDescription(offerSdp, 'offer'));
+      final answer = await existing.createAnswer(<String, dynamic>{});
+      await existing.setLocalDescription(answer);
+      _send({'type': 'answer', 'sdp': answer.sdp});
+      return;
+    }
     final pc = await createPeerConnection(<String, dynamic>{
       'iceServers': <dynamic>[],
       'sdpSemantics': 'unified-plan',
@@ -327,7 +347,13 @@ class ReceiverService extends ChangeNotifier {
     _lastAdjust = DateTime.now();
     final src = _sourceShort;
     final scale = (src == null || src <= height) ? 1.0 : src / height;
-    _send({'type': 'adjust', 'maxHeight': maxHeight, 'maxFps': maxFps, 'scale': scale});
+    _send({
+      'type': 'adjust',
+      'maxHeight': maxHeight,
+      'maxFps': maxFps,
+      'scale': scale,
+      if (DeviceProfile.videoCompat) 'maxBitrate': bitrateFor(maxHeight),
+    });
   }
 
   /// Captura a imagem atual do ecrã recebido (PNG).
