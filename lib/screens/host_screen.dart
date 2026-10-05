@@ -186,6 +186,14 @@ class _HostScreenState extends State<HostScreen> {
               const SizedBox(height: 4),
               const Text('O recetor tem de introduzir este código para ver o teu ecrã',
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              if (_host.localIps.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SelectableText(
+                  'Se não aparecer na lista, liga por IP: ${_host.localIps.join('  ou  ')}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: AppColors.accent, fontWeight: FontWeight.w600),
+                ),
+              ],
             ],
           ),
         ),

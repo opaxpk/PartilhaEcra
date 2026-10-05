@@ -124,8 +124,25 @@ class _NearbyDevicesPanelState extends State<NearbyDevicesPanel> {
           ),
           const SizedBox(height: 20),
         ],
-        const SectionLabel('Na tua rede'),
-        const SizedBox(height: 10),
+        Row(
+          children: [
+            const Expanded(child: SectionLabel('Na tua rede')),
+            if (_listener.scanning)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else
+              TextButton(
+                onPressed: () {
+                  _listener.scanSubnet();
+                  setState(() {});
+                },
+                child: const Text('Procurar de novo'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
         if (_listener.error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),

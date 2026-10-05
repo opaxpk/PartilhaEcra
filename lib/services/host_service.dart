@@ -10,6 +10,7 @@ import '../config.dart';
 import 'capture.dart';
 import 'discovery.dart';
 import 'native_bridge.dart';
+import 'network_info.dart';
 import 'settings.dart';
 
 /// Um recetor ligado a este Host.
@@ -49,6 +50,9 @@ class HostService extends ChangeNotifier {
   int fps = AppSettings.fps;
   String sourceLabel = '';
 
+  /// IPs deste dispositivo na rede local (para ligar manualmente).
+  List<String> localIps = [];
+
   Future<void> start({DesktopCapturerSource? source}) async {
     if (running || starting) return;
     starting = true;
@@ -64,6 +68,7 @@ class HostService extends ChangeNotifier {
         tracks.first.onEnded = () => stop();
       }
 
+      localIps = (await listLocalNetworks()).map((n) => n.ip).toList();
       _server = await HttpServer.bind(InternetAddress.anyIPv4, kSignalPort);
       _server!.listen(_handleRequest, onError: (_) {});
       await _broadcaster.start();
@@ -85,9 +90,11 @@ class HostService extends ChangeNotifier {
 
   Future<void> _handleRequest(HttpRequest req) async {
     if (!WebSocketTransformer.isUpgradeRequest(req)) {
+      // /info permite que os recetores encontrem este Host mesmo sem broadcast.
       req.response
         ..statusCode = HttpStatus.ok
-        ..write('PartilhaEcra Host')
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode(buildAnnouncement(_broadcaster.link)))
         ..close();
       return;
     }

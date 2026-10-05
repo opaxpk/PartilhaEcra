@@ -64,6 +64,14 @@ class AppSettings {
   static int get fps => _p.getInt('fps') ?? 60;
   static Future<void> setFps(int v) => _p.setInt('fps', v);
 
+  /// IPs de Hosts a que este dispositivo já se ligou (para os voltar a encontrar
+  /// mesmo quando estão noutra sub-rede, ex.: atrás de uma extensão Wi-Fi).
+  static List<String> get recentHosts => _p.getStringList('recentHosts') ?? const [];
+  static Future<void> addRecentHost(String ip) async {
+    final list = [ip, ...recentHosts.where((e) => e != ip)].take(6).toList();
+    await _p.setStringList('recentHosts', list);
+  }
+
   static bool get autoCheckUpdates => _p.getBool('autoCheckUpdates') ?? true;
   static Future<void> setAutoCheckUpdates(bool v) => _p.setBool('autoCheckUpdates', v);
 

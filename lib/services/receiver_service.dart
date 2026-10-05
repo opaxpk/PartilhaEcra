@@ -83,6 +83,7 @@ class ReceiverService extends ChangeNotifier {
       case 'accepted':
         hostName = (msg['hostName'] ?? '').toString();
         hostPlatform = (msg['platform'] ?? '').toString();
+        await AppSettings.addRecentHost(ip);
         status = ReceiverStatus.waitingVideo;
         _notify();
         break;

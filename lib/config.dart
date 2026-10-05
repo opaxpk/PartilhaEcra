@@ -7,6 +7,9 @@ const String kGithubRepo = 'opaxpk/PartilhaEcra';
 /// Porta UDP usada para anunciar/descobrir dispositivos na rede local.
 const int kDiscoveryPort = 45454;
 
+/// Grupo multicast usado em paralelo com o broadcast (algumas extensões Wi-Fi só passam um deles).
+const String kMulticastGroup = '239.255.45.45';
+
 /// Porta TCP (WebSocket) onde o Host aceita ligações de recetores.
 const int kSignalPort = 45455;
 
