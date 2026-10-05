@@ -61,6 +61,10 @@ class AppSettings {
       StreamQuality.values[(_p.getInt('quality') ?? 0).clamp(0, StreamQuality.values.length - 1)];
   static Future<void> setQuality(StreamQuality q) => _p.setInt('quality', q.index);
 
+  /// true = otimizar para vídeos (fluidez primeiro); false = texto/documentos (nitidez primeiro).
+  static bool get optimizeForVideo => _p.getBool('optimizeForVideo') ?? true;
+  static Future<void> setOptimizeForVideo(bool v) => _p.setBool('optimizeForVideo', v);
+
   static int get fps => _p.getInt('fps') ?? 60;
   static Future<void> setFps(int v) => _p.setInt('fps', v);
 

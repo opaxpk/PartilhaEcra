@@ -85,6 +85,18 @@ class _HostScreenState extends State<HostScreen> {
     );
   }
 
+  Widget _optimizeSelector() {
+    return SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(value: true, label: Text('Vídeos'), icon: Icon(Icons.movie_outlined)),
+        ButtonSegment(value: false, label: Text('Texto'), icon: Icon(Icons.article_outlined)),
+      ],
+      selected: {_host.optimizeForVideo},
+      showSelectedIcon: false,
+      onSelectionChanged: (s) => _host.setOptimizeForVideo(s.first),
+    );
+  }
+
   Widget _qualitySelector() {
     return SegmentedButton<StreamQuality>(
       segments: StreamQuality.values
@@ -102,6 +114,17 @@ class _HostScreenState extends State<HostScreen> {
       children: [
         const NetworkBanner(),
         const SizedBox(height: 24),
+        const SectionLabel('Otimizar para'),
+        const SizedBox(height: 8),
+        _optimizeSelector(),
+        const SizedBox(height: 6),
+        Text(
+          _host.optimizeForVideo
+              ? 'Imagem sempre fluida. Ideal para filmes, séries e jogos.'
+              : 'Texto sempre nítido. Ideal para documentos e apresentações.',
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        const SizedBox(height: 20),
         const SectionLabel('Qualidade'),
         const SizedBox(height: 8),
         _qualitySelector(),
@@ -293,6 +316,10 @@ class _HostScreenState extends State<HostScreen> {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 12),
+        const SectionLabel('Otimizar para'),
+        const SizedBox(height: 8),
+        _optimizeSelector(),
+        const SizedBox(height: 16),
         const SectionLabel('Qualidade'),
         const SizedBox(height: 8),
         _qualitySelector(),

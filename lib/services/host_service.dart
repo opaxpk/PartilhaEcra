@@ -59,6 +59,7 @@ class HostService extends ChangeNotifier {
   String? error;
   StreamQuality quality = AppSettings.quality;
   int fps = AppSettings.fps;
+  bool optimizeForVideo = AppSettings.optimizeForVideo;
   String sourceLabel = '';
 
   /// IPs deste dispositivo na rede local (para ligar manualmente).
@@ -263,10 +264,13 @@ class HostService extends ChangeNotifier {
         final effectiveScale = s.scale < quality.scaleDown ? quality.scaleDown : s.scale;
         enc.scaleResolutionDownBy = effectiveScale;
         params.encodings = [enc];
-        // Partilha de ecrã: manter a nitidez e, se faltar capacidade, baixar os fps.
-        params.degradationPreference = quality == StreamQuality.economy
-            ? RTCDegradationPreference.BALANCED
-            : RTCDegradationPreference.MAINTAIN_RESOLUTION;
+        // Vídeos: manter os fps (imagem fluida) e, se faltar capacidade, baixar um pouco a nitidez.
+        // Texto/documentos: manter a nitidez e, se faltar capacidade, baixar os fps.
+        params.degradationPreference = optimizeForVideo
+            ? RTCDegradationPreference.MAINTAIN_FRAMERATE
+            : quality == StreamQuality.economy
+                ? RTCDegradationPreference.BALANCED
+                : RTCDegradationPreference.MAINTAIN_RESOLUTION;
         await sender.setParameters(params);
         // Diz ao recetor a escala aplicada (ele usa-a para calcular o tamanho original).
         _send(s, {'type': 'encoding', 'scale': effectiveScale});
@@ -286,6 +290,15 @@ class HostService extends ChangeNotifier {
   Future<void> setQuality(StreamQuality q) async {
     quality = q;
     await AppSettings.setQuality(q);
+    for (final s in receivers) {
+      await _applyEncoding(s);
+    }
+    _notify();
+  }
+
+  Future<void> setOptimizeForVideo(bool value) async {
+    optimizeForVideo = value;
+    await AppSettings.setOptimizeForVideo(value);
     for (final s in receivers) {
       await _applyEncoding(s);
     }
