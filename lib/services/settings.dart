@@ -20,6 +20,13 @@ extension StreamQualityInfo on StreamQuality {
         StreamQuality.max => 20000000,
       };
 
+  /// Débito mínimo em bits por segundo (evita que a imagem caia para baixa resolução).
+  int get minBitrate => switch (this) {
+        StreamQuality.auto => 1500000,
+        StreamQuality.economy => 500000,
+        StreamQuality.max => 4000000,
+      };
+
   /// Fator de redução da resolução (1.0 = resolução nativa).
   double get scaleDown => switch (this) {
         StreamQuality.auto => 1.0,

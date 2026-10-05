@@ -27,6 +27,16 @@ class NativeBridge {
     } catch (_) {}
   }
 
+  /// Informação sobre os últimos fechos da app (só Android).
+  static Future<Map<dynamic, dynamic>?> crashReport() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<Map<dynamic, dynamic>>('crashReport');
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> releaseMulticastLock() async {
     if (!Platform.isAndroid) return;
     try {

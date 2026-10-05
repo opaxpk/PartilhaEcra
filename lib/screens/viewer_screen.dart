@@ -127,7 +127,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
   Widget _toolbar() {
     final name = _rx.hostName.isNotEmpty ? _rx.hostName : widget.initialName;
     final playing = _rx.status == ReceiverStatus.playing;
-    final res = (_rx.width != null && _rx.height != null) ? '${_rx.height}p' : null;
+    // Resolução "p" = lado mais curto (um telemóvel na vertical 1080×2400 é 1080p).
+    final res = (_rx.width != null && _rx.height != null)
+        ? '${_rx.width! < _rx.height! ? _rx.width : _rx.height}p'
+        : null;
     final fps = _rx.fps != null ? '${_rx.fps!.round()} fps' : null;
     final mbps = _rx.mbps != null ? '${_rx.mbps!.toStringAsFixed(1)} Mbps' : null;
     final details = [res, fps, mbps].whereType<String>().join(' · ');

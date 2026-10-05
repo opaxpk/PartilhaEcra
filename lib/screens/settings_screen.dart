@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../services/crash_report.dart';
 import '../services/settings.dart';
 import '../services/updater.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/crash_dialog.dart';
 import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -101,7 +103,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : const Icon(Icons.system_update_alt),
                   label: const Text('Verificar atualizações agora'),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () async {
+                    final report = await CrashReport.lastReport();
+                    if (!context.mounted) return;
+                    if (report == null) {
+                      showSnack(context, 'Não há relatórios de erro.');
+                    } else {
+                      await showCrashReportDialog(context, report, fresh: false);
+                    }
+                  },
+                  icon: const Icon(Icons.bug_report_outlined, size: 18),
+                  label: const Text('Ver último relatório de erro'),
+                ),
+                const SizedBox(height: 20),
                 const SectionLabel('Sobre'),
                 const SizedBox(height: 8),
                 Panel(

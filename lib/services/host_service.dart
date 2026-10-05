@@ -149,7 +149,8 @@ class HostService extends ChangeNotifier {
         break;
       case 'answer':
         if (!s.authorized || s.pc == null) return;
-        await s.pc!.setRemoteDescription(RTCSessionDescription(msg['sdp'] as String?, 'answer'));
+        final answerSdp = withBitrateHints(msg['sdp'] as String? ?? '', quality.maxBitrate ~/ 1000);
+        await s.pc!.setRemoteDescription(RTCSessionDescription(answerSdp, 'answer'));
         s.remoteSet = true;
         for (final c in s.pendingCandidates) {
           await s.pc!.addCandidate(c);
@@ -205,6 +206,7 @@ class HostService extends ChangeNotifier {
     for (final track in stream.getTracks()) {
       s.senders.add(await pc.addTrack(track, stream));
     }
+    await _preferHardwareCodec(pc);
     final offer = await pc.createOffer(<String, dynamic>{});
     await pc.setLocalDescription(offer);
     _send(s, {'type': 'offer', 'sdp': offer.sdp});
@@ -219,9 +221,14 @@ class HostService extends ChangeNotifier {
         final encodings = params.encodings;
         final enc = (encodings == null || encodings.isEmpty) ? RTCRtpEncoding() : encodings.first;
         enc.maxBitrate = quality.maxBitrate;
+        enc.minBitrate = quality.minBitrate;
         enc.maxFramerate = Platform.isAndroid ? 30 : fps;
         enc.scaleResolutionDownBy = quality.scaleDown;
         params.encodings = [enc];
+        // Partilha de ecrã: manter a nitidez e, se faltar capacidade, baixar os fps.
+        params.degradationPreference = quality == StreamQuality.economy
+            ? RTCDegradationPreference.BALANCED
+            : RTCDegradationPreference.MAINTAIN_RESOLUTION;
         await sender.setParameters(params);
       } catch (e) {
         debugPrint('setParameters falhou: $e');
@@ -334,6 +341,83 @@ class HostService extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+/// Coloca o H.264 em primeiro lugar: é o codec com codificação por hardware na
+/// maioria dos telemóveis e PCs, o que permite resolução alta sem esforço do CPU.
+Future<void> _preferHardwareCodec(RTCPeerConnection pc) async {
+  try {
+    final caps = await getRtpSenderCapabilities('video');
+    final codecs = caps.codecs ?? <RTCRtpCodecCapability>[];
+    if (codecs.isEmpty) return;
+    int rank(RTCRtpCodecCapability c) {
+      final m = c.mimeType.toLowerCase();
+      if (m.endsWith('/h264')) return 0;
+      if (m.endsWith('/vp8')) return 1;
+      if (m.endsWith('/vp9')) return 2;
+      if (m.endsWith('/av1')) return 3;
+      return 4; // rtx, red, ulpfec...
+    }
+
+    final ordered = List<RTCRtpCodecCapability>.from(codecs)
+      ..sort((a, b) => rank(a).compareTo(rank(b)));
+    for (final t in await pc.getTransceivers()) {
+      if (t.sender.track?.kind == 'video') {
+        await t.setCodecPreferences(ordered);
+      }
+    }
+  } catch (e) {
+    debugPrint('setCodecPreferences não disponível: $e');
+  }
+}
+
+/// Acrescenta ao SDP os limites de débito do Google WebRTC. Sem isto a ligação
+/// começa a ~300 kbps e a resolução fica muito baixa durante muito tempo.
+String withBitrateHints(String sdp, int maxKbps) {
+  if (sdp.isEmpty) return sdp;
+  final startKbps = (maxKbps * 0.6).round();
+  final minKbps = (maxKbps * 0.2).round();
+  final hint =
+      'x-google-start-bitrate=$startKbps;x-google-min-bitrate=$minKbps;x-google-max-bitrate=$maxKbps';
+  final nl = sdp.contains('\r\n') ? '\r\n' : '\n';
+  final lines = sdp.split(nl);
+
+  // Descobre os payloads de vídeo (H264, VP8, VP9, AV1).
+  final videoPts = <String>{};
+  var inVideo = false;
+  for (final l in lines) {
+    if (l.startsWith('m=')) inVideo = l.startsWith('m=video');
+    final m = RegExp(r'^a=rtpmap:(\d+) (H264|VP8|VP9|AV1)/', caseSensitive: false).firstMatch(l);
+    if (inVideo && m != null) videoPts.add(m.group(1)!);
+  }
+  if (videoPts.isEmpty) return sdp;
+
+  final withFmtp = <String>{};
+  final out = <String>[];
+  for (final l in lines) {
+    final f = RegExp(r'^a=fmtp:(\d+) ').firstMatch(l);
+    if (f != null && videoPts.contains(f.group(1)) && !l.contains('x-google-max-bitrate')) {
+      out.add('$l;$hint');
+      withFmtp.add(f.group(1)!);
+    } else {
+      out.add(l);
+    }
+  }
+  // Codecs sem linha fmtp (ex.: VP8) ganham uma nova a seguir ao rtpmap.
+  final result = <String>[];
+  inVideo = false;
+  for (final l in out) {
+    if (l.startsWith('m=')) inVideo = l.startsWith('m=video');
+    if (inVideo && l.startsWith('b=')) continue; // substituído pelo nosso b=AS
+    result.add(l);
+    final m = RegExp(r'^a=rtpmap:(\d+) ').firstMatch(l);
+    if (m != null && videoPts.contains(m.group(1)) && !withFmtp.contains(m.group(1))) {
+      result.add('a=fmtp:${m.group(1)} $hint');
+      withFmtp.add(m.group(1)!);
+    }
+    if (inVideo && l.startsWith('c=')) result.add('b=AS:$maxKbps');
+  }
+  return result.join(nl);
 }
 
 double? _num(dynamic v) {

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/crash_report.dart';
 import '../services/settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/crash_dialog.dart';
 import '../widgets/update_dialog.dart';
 import 'host_screen.dart';
 import 'receiver_screen.dart';
@@ -20,9 +22,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (AppSettings.autoCheckUpdates && mounted) checkForUpdates(context);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startupChecks());
+  }
+
+  Future<void> _startupChecks() async {
+    try {
+      final report = await CrashReport.checkPending();
+      if (report != null && mounted) await showCrashReportDialog(context, report);
+    } catch (_) {}
+    if (AppSettings.autoCheckUpdates && mounted) await checkForUpdates(context);
   }
 
   void _openHost() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const HostScreen()));
