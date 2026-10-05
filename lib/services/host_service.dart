@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../config.dart';
+import 'audio_bridge.dart';
 import 'capture.dart';
 import 'discovery.dart';
 import 'native_bridge.dart';
@@ -22,6 +24,9 @@ class ReceiverSession {
   final String address;
   String name = 'Recetor';
   String preferredCodec = 'H264';
+
+  /// O recetor quer receber o som do PC.
+  bool wantsAudio = false;
 
   /// Limites pedidos pelo recetor (o que o aparelho dele consegue mostrar).
   int maxHeight = 100000;
@@ -63,6 +68,11 @@ class HostService extends ChangeNotifier {
   StreamQuality quality = AppSettings.quality;
   int fps = AppSettings.fps;
   bool optimizeForVideo = AppSettings.optimizeForVideo;
+
+  /// Som do PC (Windows) para os recetores.
+  bool sendAudio = AppSettings.sendAudio;
+  StreamSubscription<dynamic>? _audioSub;
+  Map<String, dynamic>? _audioFormat;
 
   /// Ecrã/janela atual e fps a que está a ser capturado (Windows).
   DesktopCapturerSource? _source;
@@ -152,6 +162,7 @@ class HostService extends ChangeNotifier {
       case 'hello':
         s.name = (msg['name'] ?? 'Recetor').toString();
         s.preferredCodec = (msg['codec'] ?? 'H264').toString();
+        s.wantsAudio = msg['audio'] == true;
         s.maxHeight = (msg['maxHeight'] as num?)?.toInt() ?? s.maxHeight;
         s.maxFps = (msg['maxFps'] as num?)?.toInt() ?? s.maxFps;
         s.maxBitrate = (msg['maxBitrate'] as num?)?.toInt();
@@ -179,6 +190,10 @@ class HostService extends ChangeNotifier {
         });
         await _startPeer(s);
         await _syncCaptureFps();
+        _syncAudio();
+        if (s.wantsAudio && _audioFormat != null) {
+          _send(s, {'type': 'audioFormat', ..._audioFormat!});
+        }
         break;
       case 'answer':
         if (!s.authorized || s.pc == null) return;
@@ -493,6 +508,7 @@ class HostService extends ChangeNotifier {
     if (removed) {
       _notify();
       unawaited(_syncCaptureFps());
+      _syncAudio();
     }
   }
 
@@ -510,7 +526,49 @@ class HostService extends ChangeNotifier {
     _notify();
   }
 
+  /// Liga/desliga a captura do som do PC conforme haja recetores que o querem.
+  void _syncAudio() {
+    final want = Platform.isWindows && running && sendAudio && receivers.any((r) => r.wantsAudio);
+    if (want && _audioSub == null) {
+      _audioSub = AudioBridge.loopback().listen((event) {
+        if (event is Map) {
+          _audioFormat = {
+            'rate': (event['rate'] as num?)?.toInt() ?? 48000,
+            'channels': (event['channels'] as num?)?.toInt() ?? 2,
+          };
+          for (final r in receivers.where((r) => r.wantsAudio)) {
+            _send(r, {'type': 'audioFormat', ..._audioFormat!});
+          }
+        } else if (event is Uint8List) {
+          for (final r in receivers) {
+            if (!r.wantsAudio || !r.authorized) continue;
+            try {
+              r.socket.add(event);
+            } catch (_) {}
+          }
+        }
+      }, onError: (Object e) => debugPrint('Captura de som falhou: $e'));
+    } else if (!want && _audioSub != null) {
+      _audioSub?.cancel();
+      _audioSub = null;
+      _audioFormat = null;
+      for (final r in receivers.where((r) => r.wantsAudio)) {
+        _send(r, {'type': 'audioStop'});
+      }
+    }
+  }
+
+  Future<void> setSendAudio(bool value) async {
+    sendAudio = value;
+    await AppSettings.setSendAudio(value);
+    _syncAudio();
+    _notify();
+  }
+
   Future<void> _cleanup() async {
+    await _audioSub?.cancel();
+    _audioSub = null;
+    _audioFormat = null;
     _statsTimer?.cancel();
     _statsTimer = null;
     await _broadcaster.stop();

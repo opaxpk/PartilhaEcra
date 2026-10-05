@@ -169,7 +169,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         : null;
     final fps = _rx.fps != null ? '${_rx.fps!.round()} fps' : null;
     final mbps = _rx.mbps != null ? '${_rx.mbps!.toStringAsFixed(1)} Mbps' : null;
-    final details = [res, fps, mbps, if (_rx.adapted) 'ajustado ao aparelho'].whereType<String>().join(' · ');
+    final details = [res, fps, mbps, if (_rx.hasAudio) 'com som', if (_rx.adapted) 'ajustado ao aparelho']
+        .whereType<String>()
+        .join(' · ');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(

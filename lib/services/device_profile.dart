@@ -65,6 +65,8 @@ class DeviceProfile {
       await WebRTC.initialize(options: <String, dynamic>{
         // Software: VP8 sem o descodificador do chip.
         if (videoCompat) 'forceSWCodecList': <String>['VP8'],
+        // Mostra cada imagem logo que é descodificada, sem buffer de segurança.
+        if (AppSettings.lowLatency) 'zeroPlayoutDelay': true,
       });
     } catch (_) {}
   }

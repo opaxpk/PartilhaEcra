@@ -25,6 +25,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _checking = false;
   bool _autoUpdates = AppSettings.autoCheckUpdates;
   String _decoderMode = AppSettings.decoderMode;
+  int _audioDelay = AppSettings.audioDelayMs;
+  bool _lowLatency = AppSettings.lowLatency;
 
   @override
   void initState() {
@@ -104,6 +106,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Em uso: ${DeviceProfile.modeLabel}. Software funciona em todos os aparelhos. '
                     'Hardware é mais leve, mas em alguns projetores dá imagem verde/riscada ou fecha a app.',
                     style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 28),
+                  Panel(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Latência mínima'),
+                      subtitle: const Text(
+                        'Mostra cada imagem logo que chega. Desliga se o vídeo der pequenos saltos. '
+                        'Reinicia a app para aplicar.',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                      value: _lowLatency,
+                      onChanged: (v) {
+                        AppSettings.setLowLatency(v);
+                        setState(() => _lowLatency = v);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const SectionLabel('Atraso do som'),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Slider(
+                          value: _audioDelay.toDouble(),
+                          min: 0,
+                          max: 600,
+                          divisions: 12,
+                          label: '$_audioDelay ms',
+                          onChanged: (v) => setState(() => _audioDelay = v.round()),
+                          onChangeEnd: (v) => AppSettings.setAudioDelayMs(v.round()),
+                        ),
+                      ),
+                      SizedBox(width: 64, child: Text('$_audioDelay ms', textAlign: TextAlign.end)),
+                    ],
+                  ),
+                  const Text(
+                    'Se o som chegar antes da imagem, aumenta. Aplica-se na próxima ligação.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 28),
                 ],

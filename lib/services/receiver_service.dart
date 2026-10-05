@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import 'audio_bridge.dart';
 import 'device_profile.dart';
 import 'settings.dart';
 
@@ -32,6 +33,9 @@ class ReceiverService extends ChangeNotifier {
   String? message;
   String hostName = '';
   String hostPlatform = '';
+
+  /// O Host está a enviar som.
+  bool hasAudio = false;
 
   // Estatísticas
   double? latencyMs;
@@ -123,6 +127,11 @@ class ReceiverService extends ChangeNotifier {
     }
     _ws!.listen(
       (data) {
+        // Som do PC: chega em binário e vai diretamente para o leitor nativo.
+        if (data is List<int>) {
+          AudioBridge.write(data is Uint8List ? data : Uint8List.fromList(data));
+          return;
+        }
         _queue = _queue.then((_) => _onMessage(data)).catchError((Object e) {
           debugPrint('Erro a processar mensagem: $e');
         });
@@ -142,6 +151,8 @@ class ReceiverService extends ChangeNotifier {
       'platform': AppSettings.platformName,
       // Codec que este aparelho descodifica melhor (VP8 em projetores/TV boxes).
       'codec': DeviceProfile.videoCompat ? 'VP8' : 'H264',
+      // Só o Android reproduz o som do PC.
+      'audio': Platform.isAndroid,
       // O que este aparelho consegue mostrar: o Host não envia mais do que isto.
       'maxHeight': maxHeight,
       'maxFps': maxFps,
@@ -163,6 +174,20 @@ class ReceiverService extends ChangeNotifier {
         hostPlatform = (msg['platform'] ?? '').toString();
         await AppSettings.addRecentHost(ip);
         status = ReceiverStatus.waitingVideo;
+        _notify();
+        break;
+      case 'audioFormat':
+        await AudioBridge.startPlayback(
+          rate: (msg['rate'] as num?)?.toInt() ?? 48000,
+          channels: (msg['channels'] as num?)?.toInt() ?? 2,
+          delayMs: AppSettings.audioDelayMs,
+        );
+        hasAudio = true;
+        _notify();
+        break;
+      case 'audioStop':
+        await AudioBridge.stopPlayback();
+        hasAudio = false;
         _notify();
         break;
       case 'sourceChanged':
@@ -417,6 +442,8 @@ class ReceiverService extends ChangeNotifier {
   }
 
   void _teardown() {
+    AudioBridge.stopPlayback();
+    hasAudio = false;
     _statsTimer?.cancel();
     _statsTimer = null;
     final pc = _pc;

@@ -85,6 +85,21 @@ class _HostScreenState extends State<HostScreen> {
     );
   }
 
+  Widget _audioToggle() {
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        secondary: const Icon(Icons.volume_up_outlined, color: AppColors.muted),
+        title: const Text('Enviar o som do PC'),
+        subtitle: const Text('O som também toca no projetor/telemóvel',
+            style: TextStyle(color: AppColors.muted, fontSize: 12)),
+        value: _host.sendAudio,
+        onChanged: (v) => _host.setSendAudio(v),
+      ),
+    );
+  }
+
   Widget _optimizeSelector() {
     return SegmentedButton<bool>(
       segments: const [
@@ -150,6 +165,8 @@ class _HostScreenState extends State<HostScreen> {
             showSelectedIcon: false,
             onSelectionChanged: (s) => _host.setFps(s.first),
           ),
+          const SizedBox(height: 20),
+          _audioToggle(),
           const SizedBox(height: 20),
           const SectionLabel('O que partilhar'),
           const SizedBox(height: 8),
@@ -270,6 +287,10 @@ class _HostScreenState extends State<HostScreen> {
               ],
             ),
           ),
+        ],
+        if (Platform.isWindows) ...[
+          const SizedBox(height: 10),
+          _audioToggle(),
         ],
         const SizedBox(height: 20),
         const SectionLabel('Recetores ligados'),

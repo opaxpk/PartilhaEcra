@@ -89,7 +89,7 @@ def patch_android() -> None:
         sys.exit(1)
     activity = activities[0]
     package = re.search(r"^package\s+([\w.]+)", read(activity), re.M).group(1)
-    for name in ("MainActivity.kt", "ScreenCaptureService.kt"):
+    for name in ("MainActivity.kt", "ScreenCaptureService.kt", "PcmPlayer.kt"):
         src = read(OVR / "android" / name).replace("__PACKAGE__", package)
         write(activity.parent / name, src)
 
@@ -153,6 +153,61 @@ def patch_windows() -> None:
     s = read(main_cpp)
     s = re.sub(r'window\.Create\(L"[^"]*"', 'window.Create(L"PartilhaEcra"', s)
     write(main_cpp, s)
+
+    # --- Som do PC para os recetores (WASAPI loopback) ---
+    runner = win / "runner"
+    for name in ("audio_loopback.h", "audio_loopback.cpp"):
+        write(runner / name, read(OVR / "windows" / name))
+
+    runner_cmake = runner / "CMakeLists.txt"
+    rc_text = read(runner_cmake)
+    if "audio_loopback.cpp" not in rc_text:
+        rc_text = rc_text.replace('  "flutter_window.cpp"\n', '  "flutter_window.cpp"\n  "audio_loopback.cpp"\n', 1)
+        rc_text = rc_text.rstrip("\n") + '\ntarget_link_libraries(${BINARY_NAME} PRIVATE "ole32.lib")\n'
+        write(runner_cmake, rc_text)
+
+    fw_h = runner / "flutter_window.h"
+    h = read(fw_h)
+    if "audio_loopback.h" not in h:
+        h = h.replace('#include "win32_window.h"', '#include "audio_loopback.h"\n#include "win32_window.h"', 1)
+        h = h.replace(
+            "  std::unique_ptr<flutter::FlutterViewController> flutter_controller_;",
+            "  std::unique_ptr<flutter::FlutterViewController> flutter_controller_;\n\n"
+            "  // Captura do som do PC (enviado aos recetores).\n"
+            "  std::unique_ptr<AudioLoopback> audio_loopback_;",
+            1,
+        )
+        write(fw_h, h)
+
+    fw_cpp = runner / "flutter_window.cpp"
+    c = read(fw_cpp)
+    if "audio_loopback_" not in c:
+        c = c.replace(
+            "  RegisterPlugins(flutter_controller_->engine());",
+            "  RegisterPlugins(flutter_controller_->engine());\n"
+            "  audio_loopback_ = std::make_unique<AudioLoopback>(\n"
+            "      flutter_controller_->engine()->messenger(), GetHandle());",
+            1,
+        )
+        c = c.replace(
+            "void FlutterWindow::OnDestroy() {\n",
+            "void FlutterWindow::OnDestroy() {\n  audio_loopback_ = nullptr;\n",
+            1,
+        )
+        c = c.replace(
+            "  // Give Flutter, including plugins, an opportunity to handle window messages.",
+            "  if (message == AudioLoopback::kFlushMessage) {\n"
+            "    if (audio_loopback_) audio_loopback_->Flush();\n"
+            "    return 0;\n"
+            "  }\n\n"
+            "  // Give Flutter, including plugins, an opportunity to handle window messages.",
+            1,
+        )
+        for marker in ("audio_loopback_ = std::make_unique", "audio_loopback_ = nullptr", "kFlushMessage"):
+            if marker not in c:
+                print(f"AVISO: não consegui aplicar '{marker}' em flutter_window.cpp")
+                sys.exit(1)
+        write(fw_cpp, c)
 
     rc = win / "runner/Runner.rc"
     r = read(rc)

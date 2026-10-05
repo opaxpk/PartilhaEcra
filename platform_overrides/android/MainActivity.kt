@@ -34,6 +34,7 @@ class CrashHandler(
 
 class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var pcmPlayer: PcmPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val current = Thread.getDefaultUncaughtExceptionHandler()
@@ -75,6 +76,28 @@ class MainActivity : FlutterActivity() {
                         multicastLock?.let { if (it.isHeld) it.release() }
                         multicastLock = null
                         result.success(true)
+                    }
+                    "audioStart" -> {
+                        pcmPlayer?.stop()
+                        val rate = (call.argument<Int>("rate")) ?: 48000
+                        val channels = (call.argument<Int>("channels")) ?: 2
+                        val delay = (call.argument<Int>("delayMs")) ?: 150
+                        pcmPlayer = try {
+                            PcmPlayer(rate, channels, delay)
+                        } catch (e: Throwable) {
+                            null
+                        }
+                        result.success(pcmPlayer != null)
+                    }
+                    "audioWrite" -> {
+                        val bytes = call.arguments as? ByteArray
+                        if (bytes != null) pcmPlayer?.write(bytes)
+                        result.success(null)
+                    }
+                    "audioStop" -> {
+                        pcmPlayer?.stop()
+                        pcmPlayer = null
+                        result.success(null)
                     }
                     "setHwByteBuffer" -> {
                         // Lido pela flutter_webrtc (corrigida em scripts/patch_webrtc.py) ao criar
@@ -148,6 +171,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        pcmPlayer?.stop()
+        pcmPlayer = null
         multicastLock?.let { if (it.isHeld) it.release() }
         multicastLock = null
         super.onDestroy()

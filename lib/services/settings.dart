@@ -65,6 +65,18 @@ class AppSettings {
   static bool get optimizeForVideo => _p.getBool('optimizeForVideo') ?? true;
   static Future<void> setOptimizeForVideo(bool v) => _p.setBool('optimizeForVideo', v);
 
+  /// Host (Windows): enviar o som do PC para os recetores.
+  static bool get sendAudio => _p.getBool('sendAudio') ?? true;
+  static Future<void> setSendAudio(bool v) => _p.setBool('sendAudio', v);
+
+  /// Recetor: atraso do som (ms) para acertar com o vídeo.
+  static int get audioDelayMs => _p.getInt('audioDelayMs') ?? 120;
+
+  /// Recetor: mostrar cada imagem assim que é descodificada (menos atraso).
+  static bool get lowLatency => _p.getBool('lowLatency') ?? true;
+  static Future<void> setLowLatency(bool v) => _p.setBool('lowLatency', v);
+  static Future<void> setAudioDelayMs(int v) => _p.setInt('audioDelayMs', v);
+
   static int get fps => _p.getInt('fps') ?? 60;
   static Future<void> setFps(int v) => _p.setInt('fps', v);
 
