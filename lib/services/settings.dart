@@ -72,6 +72,16 @@ class AppSettings {
     await _p.setStringList('recentHosts', list);
   }
 
+  /// Modo de compatibilidade de vídeo. null = automático (ligado em projetores/TV boxes).
+  static bool? get videoCompat => _p.getBool('videoCompat');
+  static Future<void> setVideoCompat(bool? v) async {
+    if (v == null) {
+      await _p.remove('videoCompat');
+    } else {
+      await _p.setBool('videoCompat', v);
+    }
+  }
+
   static bool get autoCheckUpdates => _p.getBool('autoCheckUpdates') ?? true;
   static Future<void> setAutoCheckUpdates(bool v) => _p.setBool('autoCheckUpdates', v);
 

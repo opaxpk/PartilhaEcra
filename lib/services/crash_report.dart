@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'native_bridge.dart';
+import 'settings.dart';
 import 'updater.dart';
 
 /// Gera um relatório quando a app fechou inesperadamente da última vez (Android).
@@ -32,6 +33,29 @@ class CrashReport {
 
   /// Motivos que indicam um fecho inesperado.
   static const _badReasons = {2, 3, 4, 5, 6, 7, 9, 13, 14};
+
+  /// Relatório encontrado no arranque, à espera de ser mostrado no ecrã inicial.
+  static String? pending;
+
+  /// true quando o modo de compatibilidade de vídeo foi ligado por causa deste erro.
+  static bool enabledCompat = false;
+
+  /// Verifica no arranque (antes do WebRTC). Se o crash veio do descodificador de
+  /// vídeo por hardware, liga o modo de compatibilidade automaticamente.
+  static Future<void> checkAtStartup() async {
+    try {
+      pending = await checkPending();
+      final r = pending ?? '';
+      if (r.contains('AndroidVideoDecoder') ||
+          r.contains('decoder-texture-thread') ||
+          r.contains('MediaCodec')) {
+        if (AppSettings.videoCompat != true) {
+          await AppSettings.setVideoCompat(true);
+          enabledCompat = true;
+        }
+      }
+    } catch (_) {}
+  }
 
   /// Último relatório gerado (para ver nas Definições).
   static Future<String?> lastReport() async {

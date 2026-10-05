@@ -61,7 +61,26 @@ def patch_android() -> None:
             '            android:foregroundServiceType="mediaProjection" />\n'
         )
         m = m.replace("    </application>", service + "    </application>", 1)
+    # Projetores / Android TV: aparecer no launcher e não exigir ecrã tátil.
+    if "LEANBACK_LAUNCHER" not in m:
+        m = m.replace(
+            '<category android:name="android.intent.category.LAUNCHER"/>',
+            '<category android:name="android.intent.category.LAUNCHER"/>\n'
+            '                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>',
+            1,
+        )
+    if "android.software.leanback" not in m:
+        features = (
+            '\n    <uses-feature android:name="android.software.leanback" android:required="false"/>'
+            '\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>'
+        )
+        m = re.sub(r"(<manifest[^>]*>)", lambda mo: mo.group(1) + features, m, count=1)
+    if "android:banner" not in m:
+        m = m.replace("<application", '<application\n        android:banner="@drawable/banner"', 1)
     write(manifest, m)
+    drawable = android / "app/src/main/res/drawable"
+    drawable.mkdir(parents=True, exist_ok=True)
+    (drawable / "banner.png").write_bytes((OVR / "android/banner.png").read_bytes())
 
     # --- Kotlin: MainActivity + serviço ---
     activities = list((android / "app/src/main").rglob("MainActivity.kt"))

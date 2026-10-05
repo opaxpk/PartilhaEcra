@@ -4,12 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'screens/home_screen.dart';
+import 'services/crash_report.dart';
+import 'services/device_profile.dart';
 import 'services/settings.dart';
 import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSettings.init();
+  await CrashReport.checkAtStartup();
+  await DeviceProfile.init();
 
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();

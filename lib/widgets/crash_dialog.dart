@@ -3,7 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
-Future<void> showCrashReportDialog(BuildContext context, String report, {bool fresh = true}) {
+Future<void> showCrashReportDialog(
+  BuildContext context,
+  String report, {
+  bool fresh = true,
+  bool compatEnabled = false,
+}) {
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
@@ -15,6 +20,15 @@ Future<void> showCrashReportDialog(BuildContext context, String report, {bool fr
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (compatEnabled)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'O erro veio do descodificador de vídeo deste aparelho. Liguei o modo de '
+                  'compatibilidade de vídeo — já está ativo, podes tentar de novo.',
+                  style: TextStyle(color: AppColors.accent, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
             if (fresh)
               const Text(
                 'Copia este relatório e envia-o para ajudar a corrigir o problema.',

@@ -1,8 +1,11 @@
 package __PACKAGE__
 
 import android.app.ActivityManager
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
@@ -72,6 +75,21 @@ class MainActivity : FlutterActivity() {
                         multicastLock?.let { if (it.isHeld) it.release() }
                         multicastLock = null
                         result.success(true)
+                    }
+                    "deviceInfo" -> {
+                        val uiMode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                        val isTv = uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+                            !packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+                        result.success(
+                            mapOf(
+                                "manufacturer" to Build.MANUFACTURER,
+                                "model" to Build.MODEL,
+                                "hardware" to Build.HARDWARE,
+                                "board" to Build.BOARD,
+                                "isTv" to isTv,
+                            )
+                        )
                     }
                     "crashReport" -> {
                         try {

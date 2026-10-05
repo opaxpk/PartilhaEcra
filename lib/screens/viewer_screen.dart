@@ -6,6 +6,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../services/device_profile.dart';
 import '../services/receiver_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -33,15 +34,47 @@ class _ViewerScreenState extends State<ViewerScreen> {
   bool _fullscreen = false;
   bool _showBar = true;
 
+  bool _autoFullscreenDone = false;
+
   @override
   void initState() {
     super.initState();
+    _rx.addListener(_onReceiverChange);
     _rx.connect();
+  }
+
+  /// Num projetor/TV, entra em ecrã completo assim que o vídeo começa.
+  void _onReceiverChange() {
+    if (!_autoFullscreenDone && DeviceProfile.isTv && _rx.status == ReceiverStatus.playing) {
+      _autoFullscreenDone = true;
+      _setFullscreen(true).then((_) {
+        if (mounted) setState(() => _showBar = false);
+      });
+    }
+  }
+
+  /// Teclas do comando sobre o vídeo: OK mostra/esconde a barra, seta para cima mostra-a.
+  KeyEventResult _onVideoKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final k = event.logicalKey;
+    if (k == LogicalKeyboardKey.select ||
+        k == LogicalKeyboardKey.enter ||
+        k == LogicalKeyboardKey.numpadEnter ||
+        k == LogicalKeyboardKey.gameButtonA) {
+      setState(() => _showBar = !_showBar);
+      return KeyEventResult.handled;
+    }
+    if (!_showBar && (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown)) {
+      setState(() => _showBar = true);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
   void dispose() {
     if (_fullscreen) _setFullscreen(false);
+    _rx.removeListener(_onReceiverChange);
     _rx.dispose();
     super.dispose();
   }
@@ -110,10 +143,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
                   if (_showBar) _toolbar(),
                   Expanded(child: _body()),
                   if (!_fullscreen && _rx.status == ReceiverStatus.playing)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 12, top: 4),
-                      child: Text('F11 ecrã completo · Esc sair do ecrã completo · toca no vídeo para esconder a barra',
-                          textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12, top: 4),
+                      child: Text(DeviceProfile.isTv
+                              ? 'OK no comando mostra/esconde a barra · Voltar para sair'
+                              : 'F11 ecrã completo · Esc sair do ecrã completo · toca no vídeo para esconder a barra',
+                          textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                     ),
                 ],
               ),
@@ -236,15 +271,19 @@ class _ViewerScreenState extends State<ViewerScreen> {
           ),
         );
       case ReceiverStatus.playing:
-        return GestureDetector(
-          onTap: () => setState(() => _showBar = !_showBar),
-          onDoubleTap: () => _setFullscreen(!_fullscreen),
-          child: Container(
-            color: Colors.black,
-            child: RTCVideoView(
-              _rx.renderer,
-              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-              filterQuality: FilterQuality.medium,
+        return Focus(
+          autofocus: true,
+          onKeyEvent: _onVideoKey,
+          child: GestureDetector(
+            onTap: () => setState(() => _showBar = !_showBar),
+            onDoubleTap: () => _setFullscreen(!_fullscreen),
+            child: Container(
+              color: Colors.black,
+              child: RTCVideoView(
+                _rx.renderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                filterQuality: FilterQuality.medium,
+              ),
             ),
           ),
         );

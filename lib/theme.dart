@@ -17,6 +17,12 @@ class AppColors {
   static const dangerText = Color(0xFFFF8A80);
 }
 
+/// Contorno branco grosso no elemento selecionado pelo comando/teclado.
+const focusRing = BorderSide(color: Colors.white, width: 3);
+
+WidgetStateProperty<BorderSide?> _focusSide(BorderSide? normal) =>
+    WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.focused) ? focusRing : normal);
+
 ThemeData buildTheme() {
   const scheme = ColorScheme.dark(
     primary: AppColors.accent,
@@ -52,6 +58,14 @@ ThemeData buildTheme() {
         borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
       ),
     ),
+    focusColor: AppColors.accent.withValues(alpha: 0.25),
+    filledButtonTheme: FilledButtonThemeData(style: ButtonStyle(side: _focusSide(null))),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: ButtonStyle(side: _focusSide(const BorderSide(color: AppColors.border))),
+    ),
+    textButtonTheme: TextButtonThemeData(style: ButtonStyle(side: _focusSide(null))),
+    iconButtonTheme: IconButtonThemeData(style: ButtonStyle(side: _focusSide(null))),
+    segmentedButtonTheme: SegmentedButtonThemeData(style: ButtonStyle(side: _focusSide(null))),
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: AppColors.surface2,
       contentTextStyle: TextStyle(color: AppColors.text),

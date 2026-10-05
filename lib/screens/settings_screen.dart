@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../services/crash_report.dart';
+import '../services/device_profile.dart';
 import '../services/settings.dart';
 import '../services/updater.dart';
 import '../theme.dart';
@@ -21,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _version = '';
   bool _checking = false;
   bool _autoUpdates = AppSettings.autoCheckUpdates;
+  bool _videoCompat = DeviceProfile.videoCompat;
 
   @override
   void initState() {
@@ -78,6 +82,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('É o nome que os outros veem na lista de dispositivos.',
                     style: TextStyle(fontSize: 12, color: AppColors.muted)),
                 const SizedBox(height: 28),
+                if (Platform.isAndroid) ...[
+                  const SectionLabel('Vídeo'),
+                  const SizedBox(height: 8),
+                  Panel(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Modo de compatibilidade (projetores e TV boxes)'),
+                      subtitle: const Text(
+                        'Usa VP8 descodificado por software. Liga se a app fechar ao receber vídeo. '
+                        'Reinicia a app para aplicar.',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                      value: _videoCompat,
+                      onChanged: (v) {
+                        AppSettings.setVideoCompat(v);
+                        setState(() => _videoCompat = v);
+                        showSnack(context, 'Fecha e volta a abrir a app para aplicar.');
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                ],
                 const SectionLabel('Atualizações'),
                 const SizedBox(height: 8),
                 Panel(

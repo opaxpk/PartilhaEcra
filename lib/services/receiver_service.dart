@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import 'device_profile.dart';
 import 'settings.dart';
 
 enum ReceiverStatus { connecting, waitingVideo, playing, ended, error }
@@ -68,6 +69,8 @@ class ReceiverService extends ChangeNotifier {
       'pin': pin,
       'name': AppSettings.deviceName,
       'platform': AppSettings.platformName,
+      // Codec que este aparelho descodifica melhor (VP8 em projetores/TV boxes).
+      'codec': DeviceProfile.videoCompat ? 'VP8' : 'H264',
     });
   }
 
@@ -141,7 +144,10 @@ class ReceiverService extends ChangeNotifier {
         _fail('A ligação de vídeo falhou. Verifica a firewall do Windows (porta UDP).');
       }
     };
-    await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+    // Modo de compatibilidade: retira o H.264 da proposta para forçar VP8 por software
+    // (funciona mesmo com Hosts em versões antigas).
+    final offerSdp = DeviceProfile.videoCompat ? removeVideoCodecs(sdp ?? '', {'H264'}) : sdp;
+    await pc.setRemoteDescription(RTCSessionDescription(offerSdp, 'offer'));
     _remoteSet = true;
     for (final c in _pendingCandidates) {
       await pc.addCandidate(c);
@@ -243,6 +249,54 @@ class ReceiverService extends ChangeNotifier {
     renderer.dispose();
     super.dispose();
   }
+}
+
+/// Remove codecs de vídeo (e os respetivos RTX) de um SDP. Mantém o SDP intacto
+/// se isso deixasse o vídeo sem nenhum codec.
+String removeVideoCodecs(String sdp, Set<String> codecNames) {
+  if (sdp.isEmpty) return sdp;
+  final nl = sdp.contains('\r\n') ? '\r\n' : '\n';
+  final lines = sdp.split(nl);
+  final names = codecNames.map((e) => e.toUpperCase()).toSet();
+
+  final remove = <String>{};
+  var inVideo = false;
+  for (final l in lines) {
+    if (l.startsWith('m=')) inVideo = l.startsWith('m=video');
+    if (!inVideo) continue;
+    final m = RegExp(r'^a=rtpmap:(\d+) ([^/]+)/').firstMatch(l);
+    if (m != null && names.contains(m.group(2)!.toUpperCase())) remove.add(m.group(1)!);
+  }
+  if (remove.isEmpty) return sdp;
+  // RTX associado (a=fmtp:97 apt=96).
+  inVideo = false;
+  for (final l in lines) {
+    if (l.startsWith('m=')) inVideo = l.startsWith('m=video');
+    if (!inVideo) continue;
+    final m = RegExp(r'^a=fmtp:(\d+) apt=(\d+)').firstMatch(l);
+    if (m != null && remove.contains(m.group(2))) remove.add(m.group(1)!);
+  }
+
+  final out = <String>[];
+  inVideo = false;
+  for (final l in lines) {
+    if (l.startsWith('m=')) {
+      inVideo = l.startsWith('m=video');
+      if (inVideo) {
+        final parts = l.split(' ');
+        final kept = [...parts.take(3), ...parts.skip(3).where((pt) => !remove.contains(pt))];
+        if (kept.length <= 3) return sdp; // não sobraria nenhum codec
+        out.add(kept.join(' '));
+        continue;
+      }
+    }
+    if (inVideo) {
+      final m = RegExp(r'^a=(rtpmap|fmtp|rtcp-fb):(\d+)').firstMatch(l);
+      if (m != null && remove.contains(m.group(2))) continue;
+    }
+    out.add(l);
+  }
+  return out.join(nl);
 }
 
 double? _num(dynamic v) {

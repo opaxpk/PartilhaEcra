@@ -21,6 +21,7 @@ class ReceiverSession {
   final WebSocket socket;
   final String address;
   String name = 'Recetor';
+  String preferredCodec = 'H264';
   bool authorized = false;
   bool connected = false;
   double? rttMs;
@@ -130,6 +131,7 @@ class HostService extends ChangeNotifier {
     switch (msg['type']) {
       case 'hello':
         s.name = (msg['name'] ?? 'Recetor').toString();
+        s.preferredCodec = (msg['codec'] ?? 'H264').toString();
         if (msg['pin']?.toString() != pin) {
           _send(s, {'type': 'rejected', 'reason': 'Código de ligação errado.'});
           await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -213,7 +215,7 @@ class HostService extends ChangeNotifier {
     for (final track in stream.getTracks()) {
       s.senders.add(await pc.addTrack(track, stream));
     }
-    await _preferHardwareCodec(pc);
+    await _preferCodec(pc, s.preferredCodec);
     final offer = await pc.createOffer(<String, dynamic>{});
     await pc.setLocalDescription(offer);
     _send(s, {'type': 'offer', 'sdp': offer.sdp});
@@ -350,20 +352,23 @@ class HostService extends ChangeNotifier {
   }
 }
 
-/// Coloca o H.264 em primeiro lugar: é o codec com codificação por hardware na
-/// maioria dos telemóveis e PCs, o que permite resolução alta sem esforço do CPU.
-Future<void> _preferHardwareCodec(RTCPeerConnection pc) async {
+/// Ordena os codecs com o preferido pelo recetor em primeiro lugar.
+/// Normalmente H.264 (codificação por hardware na maioria dos aparelhos);
+/// VP8 para projetores/TV boxes com descodificadores problemáticos.
+Future<void> _preferCodec(RTCPeerConnection pc, String preferred) async {
   try {
     final caps = await getRtpSenderCapabilities('video');
     final codecs = caps.codecs ?? <RTCRtpCodecCapability>[];
     if (codecs.isEmpty) return;
+    final first = preferred.toLowerCase() == 'vp8' ? '/vp8' : '/h264';
     int rank(RTCRtpCodecCapability c) {
       final m = c.mimeType.toLowerCase();
-      if (m.endsWith('/h264')) return 0;
-      if (m.endsWith('/vp8')) return 1;
-      if (m.endsWith('/vp9')) return 2;
-      if (m.endsWith('/av1')) return 3;
-      return 4; // rtx, red, ulpfec...
+      if (m.endsWith(first)) return 0;
+      if (m.endsWith('/h264')) return 1;
+      if (m.endsWith('/vp8')) return 2;
+      if (m.endsWith('/vp9')) return 3;
+      if (m.endsWith('/av1')) return 4;
+      return 5; // rtx, red, ulpfec...
     }
 
     final ordered = List<RTCRtpCodecCapability>.from(codecs)

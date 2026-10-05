@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/crash_report.dart';
+import '../services/device_profile.dart';
 import '../services/settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -26,10 +27,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _startupChecks() async {
-    try {
-      final report = await CrashReport.checkPending();
-      if (report != null && mounted) await showCrashReportDialog(context, report);
-    } catch (_) {}
+    final report = CrashReport.pending;
+    CrashReport.pending = null;
+    if (report != null && mounted) {
+      await showCrashReportDialog(context, report, compatEnabled: CrashReport.enabledCompat);
+    }
     if (AppSettings.autoCheckUpdates && mounted) await checkForUpdates(context);
   }
 
@@ -74,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
       color: AppColors.accent,
       onColor: AppColors.onAccent,
       highlighted: true,
+      autofocus: DeviceProfile.isTv,
       onTap: _openHost,
       footer: wide ? 'Atalho: Ctrl + Shift + H' : null,
     );

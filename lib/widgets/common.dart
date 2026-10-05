@@ -85,6 +85,56 @@ class AppLogo extends StatelessWidget {
   }
 }
 
+/// Cartão clicável que mostra um contorno branco quando é selecionado com o
+/// comando do projetor/TV ou com o teclado (setas + OK/Enter).
+class FocusCard extends StatefulWidget {
+  const FocusCard({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.radius = 16,
+    this.borderSide = const BorderSide(color: AppColors.border),
+    this.autofocus = false,
+  });
+
+  final Widget child;
+  final VoidCallback onTap;
+  final double radius;
+  final BorderSide borderSide;
+  final bool autofocus;
+
+  @override
+  State<FocusCard> createState() => _FocusCardState();
+}
+
+class _FocusCardState extends State<FocusCard> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final showRing =
+        _focused && FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    return AnimatedScale(
+      scale: showRing ? 1.02 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      child: Material(
+        color: showRing ? AppColors.surface2 : AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(widget.radius),
+          side: showRing ? focusRing : widget.borderSide,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          autofocus: widget.autofocus,
+          onTap: widget.onTap,
+          onFocusChange: (f) => setState(() => _focused = f),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 /// Cartão grande de escolha de modo (Host / Recetor).
 class ModeCard extends StatelessWidget {
   const ModeCard({
@@ -97,6 +147,7 @@ class ModeCard extends StatelessWidget {
     required this.onTap,
     this.highlighted = false,
     this.footer,
+    this.autofocus = false,
   });
 
   final String title;
@@ -107,40 +158,36 @@ class ModeCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool highlighted;
   final String? footer;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: highlighted ? color : AppColors.border, width: highlighted ? 1.5 : 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
-                child: Icon(icon, color: onColor, size: 26),
-              ),
+    return FocusCard(
+      radius: 20,
+      autofocus: autofocus,
+      borderSide: BorderSide(color: highlighted ? color : AppColors.border, width: highlighted ? 1.5 : 1),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
+              child: Icon(icon, color: onColor, size: 26),
+            ),
+            const SizedBox(height: 14),
+            Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(subtitle, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+            if (footer != null) ...[
               const SizedBox(height: 14),
-              Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
-              if (footer != null) ...[
-                const SizedBox(height: 14),
-                Text(footer!, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-              ],
+              Text(footer!, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             ],
-          ),
+          ],
         ),
       ),
     );

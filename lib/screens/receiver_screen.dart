@@ -206,16 +206,9 @@ class _DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => connectToHost(context, ip: device.ip, port: device.port, name: device.name),
-        child: Padding(
+    return FocusCard(
+      onTap: () => connectToHost(context, ip: device.ip, port: device.port, name: device.name),
+      child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
@@ -244,7 +237,6 @@ class _DeviceTile extends StatelessWidget {
               const Pill('Ver', color: AppColors.onOrange, background: AppColors.orange),
             ],
           ),
-        ),
       ),
     );
   }

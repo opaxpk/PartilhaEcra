@@ -3,7 +3,7 @@ description: "PartilhaEcra — partilha de ecrã rápida em rede local (Wi-Fi ou
 publish_to: 'none'
 
 # A versão real de cada lançamento vem da tag do GitHub (ex.: v1.2.0).
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
